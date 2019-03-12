@@ -24,31 +24,31 @@ def log_boltzmann_dist(Q, temperature):
     """
     return nn.LogSoftmax(dim=0)(Q/temperature)
 
-def differentiable_value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e-3, 
-                                   detach_R=False, verbose=False, dtype=torch.float32):
+def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e-3, 
+                    verbose=False, dtype=torch.float32):
 
     # assert torch.all(R < 0)
     nS, nA = len(S), len(A)
     v_delta_max = float("inf")
     s_to_idx = {tuple(v):k for k,v in enumerate(S)}
     a_to_idx = {a:i for i,a in enumerate(A)}
+    
     Q = torch.zeros(nS, nA, dtype=dtype)
     log_Pi = torch.log(torch.ones(nS, nA, dtype=dtype) / nA)
-    
     # R can be list of differentiable functions, or a differentiable vector.
     # Intialize V. (Can't make differentiable because it'll be overwritten)
     V = torch.tensor([r for r in R], requires_grad=False)
-    
+        
     # Given goal
     goal_state_idx = s_to_idx[tuple(goal)]
     V[goal_state_idx] = torch.tensor(0)
     
-    if verbose: print("Running VI [\n\t", end="")
+    if verbose: print("Running VI [ ", end="")
     iterno = 0
     while iterno < n_iters and v_delta_max > convergence_eps:
         
-        if not iterno % 10: print(".", end="")
-        if iterno and iterno % 50 == 0: print("\n\t", end="")
+        if verbose and iterno and iterno % 30 == 0: 
+            print(".", end="" if iterno % 300 else "\n\t")
         
         v_delta_max = 0
         for si, s in enumerate(S):
@@ -57,29 +57,26 @@ def differentiable_value_iteration(S, A, R, T, policy, gamma, n_iters, goal, con
             if si == goal_state_idx or s.is_terminal():
                 continue
             
-            max_q = float("-inf")
             for ai, a in enumerate(A):
                 
                 s_prime = T(s,a)
                 
                 if s_prime is None: # outside envelope
                     continue
-                    
                 Q[si, ai] = R[si] + gamma * V[s_to_idx[tuple(s_prime)]].clone()
-                q_s_a = Q[si, ai].detach().item()
-                max_q = q_s_a if q_s_a > max_q else max_q
-                
-            log_Pi[si, :] = policy(Q[si, :].clone())
-            V[si] = torch.exp(log_Pi[si, :].clone()).dot(Q[si, :].clone())
             
+            # Softmax action selection
+            log_Pi[si, :] = policy(Q[si, :].clone())
+            # Softmax value
+            V[si] = torch.exp(log_Pi[si, :].clone()).dot(Q[si, :].clone())
             v_delta_max = max(abs(v_s_prev - V[si].detach().item()), v_delta_max)
-        
+            
         iterno += 1
         
     if iterno == n_iters:
-        if verbose: print("]\n\t-> VI max iterations reached @ {}.".format(iterno))
+        if verbose: print(" ] VI didn't converge by {}.".format(iterno))
     else:
-        if verbose: print("]\n\t-> VI converged @ {}.".format(iterno))
+        if verbose: print(" ] VI converged @ {}.".format(iterno))
         
     return log_Pi, V, Q, s_to_idx, a_to_idx
 

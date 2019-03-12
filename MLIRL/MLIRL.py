@@ -14,13 +14,13 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
           n_iters=20, max_vi_iters=100, max_likelihood=-np.log(0.99), vi_convergence_eps=0.001, 
           dtype=torch.float32, verbose=True, print_interval=1):
 
-    if verbose: print("MLIRL params \n-----"
+    if verbose: print("{} params \n-----"
                       "\n\t Domains: {}, sizes: {},"
                       "\n\t Action dim: {}, \n\t Feature dim: {},"
                       "\n\t Iterations: {}, \n\t Max likelihood: {},"
                       "\n\t VI iterations: {}, \n\t VI convergence eps: {},"
-                      "\n\t Gamma (discount factor): {},"
                       "\n\t Policy example: Q {} -> Pi {}".format(
+                          sys._getframe().f_code.co_name,
                           len(data), [len(states_generator_fn(traj)) for traj in data], 
                           len(A), len(phi(states_generator_fn(data[0])[0])), 
                           n_iters, np.exp(-max_likelihood), max_vi_iters, 
@@ -44,7 +44,7 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
                 S = states_generator_fn(trajectory)
                 T = dynamics_generator_fn(trajectory)
                 # torch.tensor is tempting here, but it won't pass gradients to R_model
-                R = [R_model(phi(s)).type(dtype) for s in S] 
+                R = [R_model(phi(s)).type(dtype)[0] for s in S] 
 
                 # Compute Policy
                 log_Pi, V, Q, s_to_idx, a_to_idx = Planners.differentiable_value_iteration(

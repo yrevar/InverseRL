@@ -11,7 +11,7 @@ import Planners as Planners
 
 def MLIRL(data, states_generator_fn, dynamics_generator_fn, 
           A, phi, R_model, R_optimizer, policy, gamma, 
-          n_iters=20, max_vi_iters=100, max_likelihood=-np.log(0.99), vi_convergence_eps=0.001, 
+          n_iters=20, max_vi_iters=100, max_likelihood=0.99, vi_convergence_eps=0.001, 
           dtype=torch.float32, verbose=True, print_interval=1):
 
     if verbose: print("{} params \n-----"
@@ -23,7 +23,7 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
                           sys._getframe().f_code.co_name,
                           len(data), [len(states_generator_fn(traj)) for traj in data], 
                           len(A), len(phi(states_generator_fn(data[0])[0])), 
-                          n_iters, np.exp(-max_likelihood), max_vi_iters, 
+                          n_iters, max_likelihood, max_vi_iters, 
                           vi_convergence_eps, gamma, torch.linspace(0,1,4), policy(torch.linspace(0,1,4))))
     loss_history = []
     
@@ -38,6 +38,7 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
 
             loss = 0
             n_sa = 0
+            learned_policies = []
             for idx, trajectory in enumerate(data):
 
                 goal = trajectory[-1][0]
@@ -47,9 +48,10 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
                 R = [R_model(phi(s)).type(dtype)[0] for s in S] 
 
                 # Compute Policy
-                log_Pi, V, Q, s_to_idx, a_to_idx = Planners.differentiable_value_iteration(
+                log_Pi, V, Q, s_to_idx, a_to_idx = Planners.value_iteration(
                     S, A, R, T, policy, gamma, max_vi_iters, goal, 
-                    convergence_eps=vi_convergence_eps, detach_R=False, verbose=False, dtype=dtype)
+                    convergence_eps=vi_convergence_eps, verbose=False, dtype=dtype)
+                learned_policies.append(log_Pi)
 
                 # Maximize data likelihood objective
                 for (s,a) in trajectory[:-1]:
@@ -58,8 +60,9 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
                     loss -= log_Pi[s_idx, a_idx]
                     n_sa += 1
             
-            # Normalize to make likelihood independent of trajectory length.
-            loss = (1./n_sa) * loss
+            # This is wrong - >Normalize to make likelihood independent of trajectory length.
+                # loss = (1./n_sa) * loss
+                
             loss.backward()
             loss_history.append(loss.detach().item())
             # Gradient step
@@ -69,12 +72,13 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
                 print("\n>>> Iter: {:04d}: loss = {:09.6f}, likelihood = {:02.4f}, CPU time = {:f}".format(
                     _iter, loss, np.exp(-loss.item()), time.time()-_mlirl_iter_start))
 
-            if max_likelihood is not None and loss < max_likelihood:
+            # loss = negative log likelihood, so compare threshold in that space
+            if max_likelihood is not None and loss < -np.log(max_likelihood):
                 print("\n>>> Iter: {:04d} Converged.\n\n".format(_iter))
                 break
                 
     except KeyboardInterrupt:
-        return loss_history
+        return loss_history, learned_policies
     except:
         raise
-    return loss_history
+    return loss_history, learned_policies

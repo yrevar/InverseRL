@@ -31,7 +31,7 @@ def compute_feature_expectations(trajectory_list, phi):
         
         # Iterate over states of trajectory.
         for (s,a) in trajectory[:-1]:
-            s_idx = s_to_idx[tuple(s)]
+            s_idx = s_to_idx[s]
             a_idx = a_to_idx[a]
             if n_sa == 0:
                 feature_exp = phi(s).clone()
@@ -42,14 +42,14 @@ def compute_feature_expectations(trajectory_list, phi):
 
 def compute_svf(trajectory_list, S):
     
-    s_to_idx = {tuple(v):k for k,v in enumerate(S)}
+    s_to_idx = {v:k for k,v in enumerate(S)}
     svf = np.zeros(len(S))
     n_sa = 0
     for idx, trajectory in enumerate(trajectory_list):
         
         # Iterate over states of trajectory.
         for (s,a) in trajectory:
-            svf[s_to_idx[tuple(s)]] += 1
+            svf[s_to_idx[s]] += 1
             n_sa += 1
             
     # Note: This is deviation from Matthew Alger's code where svf is 
@@ -62,7 +62,7 @@ def backward_pass(S, A, R, T, n_iters, goal, convergence_eps=1e-6,
     # Forward Pass
     
     nS, nA = len(S), len(A)
-    s_to_idx = {tuple(v):k for k,v in enumerate(S)}
+    s_to_idx = {v:k for k,v in enumerate(S)}
     a_to_idx = {a:i for i,a in enumerate(A)}
     v_delta_max = float("inf")
     
@@ -73,7 +73,7 @@ def backward_pass(S, A, R, T, n_iters, goal, convergence_eps=1e-6,
     R = np.array([r.item() for r in R])
         
     # Given goal
-    goal_state_idx = s_to_idx[tuple(goal)]
+    goal_state_idx = s_to_idx[goal]
     V[goal_state_idx] = 0
     
     if verbose: print("Running Backward Pass  [ ", end="")
@@ -92,10 +92,10 @@ def backward_pass(S, A, R, T, n_iters, goal, convergence_eps=1e-6,
 
             for ai, a in enumerate(A):
                 
-                s_prime = T(s,a)
-                if s_prime is None: # outside envelope
-                    continue
-                Q[si, ai] = boltzmann_temp * (R[si] + gamma * V[s_to_idx[tuple(s_prime)]])
+                for s_prime, p in T(s,a):
+                    if s_prime is None: # outside envelope
+                        continue
+                    Q[si, ai] = boltzmann_temp * (R[si] + gamma * p * V[s_to_idx[s_prime]])
                 
             # Note: 
             V[si] = np.log(np.exp(Q[si,:]).sum())
@@ -115,20 +115,17 @@ def backward_pass(S, A, R, T, n_iters, goal, convergence_eps=1e-6,
             
     return Pi, V, Q, s_to_idx, a_to_idx
 
-def compute_expected_svf(data, S, A, Pi, T, goal, dtype=np.float32, debug=False, insane_debug=False):
+def compute_expected_svf(data, S, A, Pi, T, debug=False, insane_debug=False, dtype=np.float32):
     
     # Forward Pass
     nS, nA = len(S), len(A)
-    s_to_idx = {tuple(v):k for k,v in enumerate(S)}
+    s_to_idx = {v:k for k,v in enumerate(S)}
     a_to_idx = {a:i for i,a in enumerate(A)}
     N = max([len(traj) for traj in data])
     
-    # Given goal
-    goal_state_idx = s_to_idx[tuple(goal)]
-    
     # Initial visitation count
     D = np.zeros((N, nS), dtype=dtype)
-    for s_idx in [s_to_idx[tuple(traj[0][0])] for traj in data]:
+    for s_idx in [s_to_idx[traj[0][0]] for traj in data]:
         D[0, s_idx] += 1.
     D[0, :] /= len(data)
     
@@ -144,9 +141,10 @@ def compute_expected_svf(data, S, A, Pi, T, goal, dtype=np.float32, debug=False,
         for s_prev_idx, s_prev in enumerate(S):
             for a_idx, a in enumerate(A):
                 # Note: This implementation assumes deterministic dynamics.
-                s_idx = s_to_idx[tuple(T(s_prev,a))]
-                p_sprev_a_s = 1.
-                D[n+1, s_idx] += p_sprev_a_s * Pi[s_prev_idx, a_idx] * D[n, s_prev_idx]
+                for s, p_sprev_a_s in  T(s_prev,a):
+                    s_idx = s_to_idx[s]
+                    # p_sprev_a_s = 1.
+                    D[n+1, s_idx] += p_sprev_a_s * Pi[s_prev_idx, a_idx] * D[n, s_prev_idx]
         
         if debug:
             if insane_debug:
@@ -161,7 +159,7 @@ def compute_expected_svf(data, S, A, Pi, T, goal, dtype=np.float32, debug=False,
 def MaxEntIRL(data, states_generator_fn, dynamics_generator_fn, 
           A, phi, R_model, R_optimizer, gamma, 
           n_iters=20, max_vi_iters=100, max_likelihood=0.99, vi_convergence_eps=0.001, 
-          dtype=torch.float32, verbose=True, print_interval=1, boltzmann_temp=1., 
+          dtype=torch.float32, verbose=False, print_interval=1, boltzmann_temp=1., 
           debug=False, insane_debug=False):
 
     if verbose: print("{} params \n-----"
@@ -183,7 +181,7 @@ def MaxEntIRL(data, states_generator_fn, dynamics_generator_fn,
         for _iter in range(n_iters):
 
             # mlirl iter tick
-            _iter_start = time.time()
+            _iter_start_time = time.time()
 
             # Zero grads
             R_optimizer.zero_grad()
@@ -191,7 +189,7 @@ def MaxEntIRL(data, states_generator_fn, dynamics_generator_fn,
             loss = 0
             n_sa = 0
             learned_policies = []
-            
+            log_lik = 0
             for idx, trajectory in enumerate(data):
 
                 goal = trajectory[-1][0]
@@ -207,54 +205,62 @@ def MaxEntIRL(data, states_generator_fn, dynamics_generator_fn,
                 
                 # Policy Computation.
                 # Compute Policy (Backward Pass)
+                if debug: 
+                    print("{}".format("".join(["-"]*80)))
+                    print("Backward Pass I/P: \n\tS: {}, \n\tA: {}, \n\tR: {}, \n\tT: {}\n".format(S, A, R, T))
                 Pi, V, Q, s_to_idx, a_to_idx = backward_pass(S, A, R, T, max_vi_iters, goal, 
-                                                             vi_convergence_eps, verbose=True, gamma=gamma,
+                                                             vi_convergence_eps, verbose=verbose, gamma=gamma,
                                                             boltzmann_temp=boltzmann_temp)
+                if debug:
+                    print("Backward Pass Results: \n\tPolicy: {}, \n\tV: {}, \n\tQ: {}\n".format(Pi, V, Q))
                 learned_policies.append(Pi)
+                log_lik += traj_log_likelihood(trajectory, s_to_idx, a_to_idx, Pi)
                 
                 # Policy Evaluation.
                 # Forward Pass (state visitation frequency).
-                learner_svf = compute_expected_svf(data, S, A, Pi, T, goal)
+                learner_svf = compute_expected_svf(data, S, A, Pi, T)
                 
                 es = np.sum(expert_svf)
                 ls = np.sum(learner_svf)
-                assert np.abs(es) - 1 < 1e-3 and np.abs(ls-1) < 1e-3, \
+                assert np.abs(es - 1) < 1e-3 and np.abs(ls - 1) < 1e-3, \
                     "SVF don't sum to 1! \n Expert svf sum: {}, Learner svf sum: {}".format(es, ls)
                 
                 grad_r_s = torch.tensor(expert_svf - learner_svf, dtype=dtype) # gradient for r(s) for each s in S
+                if debug: print("Loss: \n\tExpert SVF: {}, \n\tLearner SVF: {} \n\tDiff: {} \n".format(
+                    expert_svf, learner_svf, grad_r_s))
                 
                 # Compute gradient
                 for i, r in enumerate(R):
-                    r.backward(gradient=-grad_r_s) # like scaling the identity gradient
+                    r.backward(gradient=-grad_r_s[i]) # like scaling the identity gradient
                     
                 if debug:
-                    # for p in R_model.parameters():
-                    #    print(p.grad)
+                    print("Grads: ")
+                    for p_idx, p in enumerate(R_model.parameters()):
+                        print("\tParam: {}, grad: {}".format(p_idx, p.grad))
                     if insane_debug:
                         learner_svf_list[_iter, :] = learner_svf
                         for i, (e,l) in enumerate(zip(expert_svf, learner_svf)):
                             print("{}: expert: {:.2f}: learner {}".format(S[i], e, learner_svf_list[:_iter+1, i]))
-                    print("SVF diff: {}".format(grad_r_s))
 
             # Loss is computed per state which is equal to difference in state visitation frequency of 
             # expert and learner policies.
             # To get a single scalar loss value, I'm using norm of these gradients.
             loss = np.linalg.norm(grad_r_s, ord=1) / len(S)
             loss_history.append(loss)
-            log_likelihoods.append(traj_log_likelihood(trajectory, s_to_idx, a_to_idx, Pi))
+            log_likelihoods.append(log_lik)
             # Gradient step
             R_optimizer.step()
 
             if verbose and (_iter % print_interval == 0 or _iter == n_iters-1):
-                print("\n>>> Iter: {:04d}: loss = {:09.6f}, likelihood = {:02.4f}, CPU time = {:f}".format(
-                    _iter, loss, np.exp(log_likelihoods[-1]), time.time()-_iter_start))
+                print("\n>>> Iter: {:04d} ({:03.3f}s): loss = {:09.6f}, likelihood = {:02.4f}".format(
+                    _iter, time.time()-_iter_start_time, loss, np.exp(log_likelihoods[-1])))
 
             if max_likelihood is not None and log_likelihoods[-1] >= np.log(max_likelihood):
                 print("\n>>> Iter: {:04d} Converged.\n\n".format(_iter))
                 break
                 
     except KeyboardInterrupt:
-        return loss_history, learned_policies
+        return loss_history, learned_policies, log_likelihoods
     except:
         raise
-    return loss_history, learned_policies
+    return loss_history, learned_policies, log_likelihoods

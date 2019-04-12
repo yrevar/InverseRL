@@ -6,9 +6,7 @@ import torch
 from torch import nn
 
 # Utils
-import sys
-sys.path.append("../../utils/")
-from PriorityQueue import PriorityQueue
+import InverseRL.utils.PriorityQueue as PriorityQueue
 
 boltzmann_policy = lambda Q, boltzmann_temp: log_boltzmann_dist(Q, boltzmann_temp)
 heuristic_l2 = lambda s1, s2: np.linalg.norm(np.array(s1) - np.array(s2))
@@ -30,7 +28,7 @@ def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e
     # assert torch.all(R < 0)
     nS, nA = len(S), len(A)
     v_delta_max = float("inf")
-    s_to_idx = {tuple(v):k for k,v in enumerate(S)}
+    s_to_idx = {v:k for k,v in enumerate(S)}
     a_to_idx = {a:i for i,a in enumerate(A)}
     
     Q = torch.zeros(nS, nA, dtype=dtype)
@@ -40,7 +38,7 @@ def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e
     V = torch.tensor([r for r in R], requires_grad=False)
         
     # Given goal
-    goal_state_idx = s_to_idx[tuple(goal)]
+    goal_state_idx = s_to_idx[goal]
     V[goal_state_idx] = torch.tensor(0)
     
     if verbose: print("Running VI [ ", end="")
@@ -59,12 +57,12 @@ def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e
             
             for ai, a in enumerate(A):
                 
-                s_prime = T(s,a)
+                for s_prime, p in T(s,a):
                 
-                if s_prime is None: # outside envelope
-                    continue
-                Q[si, ai] = R[si] + gamma * V[s_to_idx[tuple(s_prime)]].clone()
-            
+                    if s_prime is None: # outside envelope
+                        continue
+                    Q[si, ai] = R[si] + gamma * p * V[s_to_idx[s_prime]].clone()
+                    
             # Softmax action selection
             log_Pi[si, :] = policy(Q[si, :].clone())
             # Softmax value
@@ -82,7 +80,7 @@ def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e
 
 def astar_find_path(start, goal, actions, trans_func, cost_fn=lambda s: 1, heuristic_fn=heuristic_l2):
     
-    frontier = PriorityQueue()
+    frontier = PriorityQueue.PriorityQueue()
     frontier.append([cost_fn(start)+heuristic_fn(start, goal), cost_fn(start), start])
     explored = defaultdict(lambda: False)
     cost = defaultdict(lambda: np.float("inf"))

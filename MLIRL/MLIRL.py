@@ -18,7 +18,8 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
                       "\n\t Domains: {}, sizes: {},"
                       "\n\t Action dim: {}, \n\t Feature dim: {},"
                       "\n\t Iterations: {}, \n\t Max likelihood: {},"
-                      "\n\t VI iterations: {}, \n\t VI convergence eps: {},"
+                      "\n\t VI iterations: {}, \n\t VI convergence eps: {}," 
+                      "\n\t Gamma (discount factor): {}, "
                       "\n\t Policy example: Q {} -> Pi {}".format(
                           sys._getframe().f_code.co_name,
                           len(data), [len(states_generator_fn(traj)) for traj in data], 
@@ -31,7 +32,7 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
         for _iter in range(n_iters):
 
             # mlirl iter tick
-            _mlirl_iter_start = time.time()
+            _iter_start_time = time.time()
 
             # Zero grads
             R_optimizer.zero_grad()
@@ -50,12 +51,12 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
                 # Compute Policy
                 log_Pi, V, Q, s_to_idx, a_to_idx = Planners.value_iteration(
                     S, A, R, T, policy, gamma, max_vi_iters, goal, 
-                    convergence_eps=vi_convergence_eps, verbose=False, dtype=dtype)
-                learned_policies.append(log_Pi)
+                    convergence_eps=vi_convergence_eps, verbose=verbose, dtype=dtype)
+                learned_policies.append(np.exp(log_Pi.detach()))
 
                 # Maximize data likelihood objective
                 for (s,a) in trajectory[:-1]:
-                    s_idx = s_to_idx[tuple(s)]
+                    s_idx = s_to_idx[s]
                     a_idx = a_to_idx[a]
                     loss -= log_Pi[s_idx, a_idx]
                     n_sa += 1
@@ -69,8 +70,8 @@ def MLIRL(data, states_generator_fn, dynamics_generator_fn,
             R_optimizer.step()
 
             if verbose and (_iter % print_interval == 0 or _iter == n_iters-1):
-                print("\n>>> Iter: {:04d}: loss = {:09.6f}, likelihood = {:02.4f}, CPU time = {:f}".format(
-                    _iter, loss, np.exp(-loss.item()), time.time()-_mlirl_iter_start))
+                print("\n>>> Iter: {:04d} ({:03.3f}s): loss = {:09.6f}, likelihood = {:02.4f}".format(
+                    _iter, time.time()-_iter_start_time, loss, np.exp(-loss.item())))
 
             # loss = negative log likelihood, so compare threshold in that space
             if max_likelihood is not None and loss < -np.log(max_likelihood):

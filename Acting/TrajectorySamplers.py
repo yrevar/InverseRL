@@ -1,14 +1,14 @@
+import torch
 import numpy as np
 
 def sample_trajectory(S, A, T, start_state, policy, given_goal, 
-                      horizon=1000, greedy_selection=True):
+                      horizon=1000, greedy_selection=True, values=None):
     
-    s_list = []
-    a_list = []
+    trajectory = []
     
     # state tuple -> idx
-    s_to_idx = {tuple(v):k for k,v in enumerate(S)}
-    given_goal_idx = s_to_idx[tuple(given_goal)]
+    s_to_idx = {v:k for k,v in enumerate(S)}
+    given_goal_idx = s_to_idx[given_goal]
     steps = 0
     
     ## start state
@@ -17,20 +17,37 @@ def sample_trajectory(S, A, T, start_state, policy, given_goal,
     while steps < horizon:
         
         ## add state
-        s_idx = s_to_idx[tuple(s)]
-        s_list.append(S[s_idx])
+        s_idx = s_to_idx[s]
+        
+        if given_goal_idx == s_idx:
+            trajectory.append((s, None))
+            break
+            
+        v_curr = values[s_idx].item()
         
         ## sample next state
         
         # policy  (Note: taking exp because the policy is log softmax)
-        Pi_s = torch.exp(policy[s_idx]).detach().numpy()
+        Pr_s = np.exp(policy[s_idx])
         # action selection
         if greedy_selection:
-            a_idx = int(Pi_s.argmax())
+            a_idx = int(Pr_s.argmax())
         else:
-            a_idx = int(np.random.choice(len(A), p=Pi_s))
-        
-        a_list.append(A[a_idx])
+            
+            if values is not None:
+                # To prevent suboptimal trajectories with cycles
+                S_primes = [T(S[s_idx], A[a_idx]) for a_idx in range(len(A))]
+                V_primes = np.asarray([values[s_to_idx[sp]].item() for sp in S_primes])
+                V_improves = V_primes >= v_curr
+                
+                if sum(V_improves) == 0:
+                    raise Exception("Passed value function isn't converged or the goal is incorrect.")
+                
+                Pr_s[~V_improves] = 0. # set prob. mass of not value improving actions to 0.
+                Pr_s = Pr_s / Pr_s.sum() # normalize s.t. probs sum to 1.
+            a_idx = int(np.random.choice(len(A), p=Pr_s))
+            
+        trajectory.append((S[s_idx], A[a_idx]))
         s = T(S[s_idx], A[a_idx])
         
         steps += 1
@@ -39,17 +56,17 @@ def sample_trajectory(S, A, T, start_state, policy, given_goal,
         if given_goal_idx is not None and s_idx == given_goal_idx:
             break
             
-    return  s_list, a_list
+    return  trajectory
 
 def sample_trajectories(N, S, A, T, start_states, policy, given_goal, 
-                        horizon=1000, greedy_selection=True):
+                        horizon=1000, greedy_selection=True, values=None):
     
     traj_list = []
     
     for i in range(N):
         
-        s_list, a_list = sample_trajectory(S, A, T, start_states[i], policy, given_goal, horizon, greedy_selection)
-        traj_list.append((s_list, a_list))
+        trajectory = sample_trajectory(S, A, T, start_states[i], policy, given_goal, horizon, greedy_selection, values)
+        traj_list.append(trajectory)
         
     return traj_list
 

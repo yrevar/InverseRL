@@ -22,7 +22,7 @@ def log_boltzmann_dist(Q, temperature):
     """
     return nn.LogSoftmax(dim=0)(Q/temperature)
 
-def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e-3, 
+def value_iteration(S, A, R, T, policy, gamma, n_iters, start=None, goal=None, step_cost=0.,convergence_eps=1e-3, 
                     verbose=False, dtype=torch.float32):
 
     # assert torch.all(R < 0)
@@ -36,10 +36,17 @@ def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e
     # R can be list of differentiable functions, or a differentiable vector.
     # Intialize V. (Can't make differentiable because it'll be overwritten)
     V = torch.tensor([r for r in R], requires_grad=False)
-        
+    
+    # Given start
+    if start:
+        V_min = 10 *R.min() * 1 / (1-gamma)
+        start_state_idx = s_to_idx[start]
+        V[start_state_idx] = torch.tensor(V_min)
     # Given goal
-    goal_state_idx = s_to_idx[goal]
-    V[goal_state_idx] = torch.tensor(0)
+    if goal:
+        V_max = torch.tensor(0)
+        goal_state_idx = s_to_idx[goal]
+        V[goal_state_idx] = torch.tensor(0)
     
     if verbose: print("Running VI [ ", end="")
     iterno = 0
@@ -61,7 +68,7 @@ def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e
                 
                     if s_prime is None: # outside envelope
                         continue
-                    Q[si, ai] = R[si] + gamma * p * V[s_to_idx[s_prime]].clone()
+                    Q[si, ai] = -step_cost + R[si] + gamma * p * V[s_to_idx[s_prime]].clone()
                     
             # Softmax action selection
             log_Pi[si, :] = policy(Q[si, :].clone())
@@ -76,7 +83,7 @@ def value_iteration(S, A, R, T, policy, gamma, n_iters, goal, convergence_eps=1e
     else:
         if verbose: print(" ] VI converged @ {}.".format(iterno))
         
-    return log_Pi, V, Q, s_to_idx, a_to_idx
+    return log_Pi, V, Q, s_to_idx, a_to_idx, iterno
 
 def astar_find_path(start, goal, actions, trans_func, cost_fn=lambda s: 1, heuristic_fn=heuristic_l2):
     

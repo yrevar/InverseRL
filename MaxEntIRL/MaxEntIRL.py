@@ -113,7 +113,7 @@ def backward_pass(S, A, R, T, n_iters, goal, convergence_eps=1e-6,
         if goal_state_idx != si:
             Pi[si, :] = np.exp(Q[si,:]-V[si])
             
-    return Pi, V, Q, s_to_idx, a_to_idx
+    return Pi, V, Q, s_to_idx, a_to_idx, iterno
 
 def compute_expected_svf(data, S, A, Pi, T, debug=False, insane_debug=False, dtype=np.float32):
     
@@ -140,8 +140,9 @@ def compute_expected_svf(data, S, A, Pi, T, debug=False, insane_debug=False, dty
     for n in range(N-1): # We already computed D[0, :], to match the notations used in paper we'll use D[n+1, :] in each iteration instead of more convenient coding convention of D[n, :].
         for s_prev_idx, s_prev in enumerate(S):
             for a_idx, a in enumerate(A):
-                # Note: This implementation assumes deterministic dynamics.
                 for s, p_sprev_a_s in  T(s_prev,a):
+                    if s is None:
+                        continue
                     s_idx = s_to_idx[s]
                     # p_sprev_a_s = 1.
                     D[n+1, s_idx] += p_sprev_a_s * Pi[s_prev_idx, a_idx] * D[n, s_prev_idx]
@@ -174,8 +175,8 @@ def MaxEntIRL(data, states_generator_fn, dynamics_generator_fn,
                           n_iters, max_likelihood, max_vi_iters, 
                           vi_convergence_eps, gamma, torch.linspace(0,1,4)))
     loss_history = []
-    log_likelihoods = []
-    
+    log_likelihoods_history = []
+    vi_iters_history = []
     learner_svf_list = np.zeros((n_iters, 80))
     try:
         for _iter in range(n_iters):
@@ -208,9 +209,10 @@ def MaxEntIRL(data, states_generator_fn, dynamics_generator_fn,
                 if debug: 
                     print("{}".format("".join(["-"]*80)))
                     print("Backward Pass I/P: \n\tS: {}, \n\tA: {}, \n\tR: {}, \n\tT: {}\n".format(S, A, R, T))
-                Pi, V, Q, s_to_idx, a_to_idx = backward_pass(S, A, R, T, max_vi_iters, goal, 
+                Pi, V, Q, s_to_idx, a_to_idx, vi_iters = backward_pass(S, A, R, T, max_vi_iters, goal, 
                                                              vi_convergence_eps, verbose=verbose, gamma=gamma,
                                                             boltzmann_temp=boltzmann_temp)
+                vi_iters_history.append(vi_iters)
                 if debug:
                     print("Backward Pass Results: \n\tPolicy: {}, \n\tV: {}, \n\tQ: {}\n".format(Pi, V, Q))
                 learned_policies.append(Pi)
@@ -247,20 +249,20 @@ def MaxEntIRL(data, states_generator_fn, dynamics_generator_fn,
             # To get a single scalar loss value, I'm using norm of these gradients.
             loss = np.linalg.norm(grad_r_s, ord=1) / len(S)
             loss_history.append(loss)
-            log_likelihoods.append(log_lik)
+            log_likelihoods_history.append(log_lik)
             # Gradient step
             R_optimizer.step()
 
             if verbose and (_iter % print_interval == 0 or _iter == n_iters-1):
-                print("\n>>> Iter: {:04d} ({:03.3f}s): loss = {:09.6f}, likelihood = {:02.4f}".format(
-                    _iter, time.time()-_iter_start_time, loss, np.exp(log_likelihoods[-1])))
+                print("\n>>> Iter: {:04d} ({:03.3f}s): loss = {:09.6f}, likelihood = {:02.4f}\n\n".format(
+                    _iter, time.time()-_iter_start_time, loss, np.exp(log_likelihoods_history[-1])))
 
-            if max_likelihood is not None and log_likelihoods[-1] >= np.log(max_likelihood):
+            if max_likelihood is not None and log_likelihoods_history[-1] >= np.log(max_likelihood):
                 print("\n>>> Iter: {:04d} Converged.\n\n".format(_iter))
                 break
                 
     except KeyboardInterrupt:
-        return loss_history, learned_policies, log_likelihoods
+        return loss_history, learned_policies, log_likelihoods_history, vi_iters_history
     except:
         raise
-    return loss_history, learned_policies, log_likelihoods
+    return loss_history, learned_policies, log_likelihoods_history, vi_iters_history

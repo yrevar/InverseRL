@@ -105,8 +105,8 @@ def df_crop_trips(data, lat, lng, lat_span_miles,lng_span_miles, lat_col="latitu
     in_region_trips = []
     for trip_id, df_trip in data.groupby(trip_col):
         n_trips += 1
-        if df_trip["latitude"].min() >= lat_min and df_trip["latitude"].max() <= lat_max \
-            and df_trip["longitude"].min() >= long_min and df_trip["longitude"].max() <= long_max:
+        if df_trip[lat_col].min() >= lat_min and df_trip[lat_col].max() <= lat_max \
+            and df_trip[lng_col].min() >= long_min and df_trip[lng_col].max() <= long_max:
                 r_trips += 1
                 in_region_trips.append(df_trip)
     print("Trips cropped: {}/{}".format(r_trips, n_trips))

@@ -4,6 +4,7 @@ import plotting_wrapper as Plotting
 from PriorityQueue import PriorityQueue
 
 import os
+import glob
 import numpy as np
 from PIL import Image
 import pandas as pd
@@ -452,26 +453,30 @@ class GeoLifeData(object):
                 if file == "labels.txt":
                     labeled_dirs.append(root)
         return labeled_dirs
+    
+    @staticmethod
+    def list_all_dirs(dataset_dir):
+        """Find trajectory directories containing "labels.txt"."""
+        return glob.glob(os.path.join(dataset_dir, '*'))
 
     @staticmethod
-    def get_dataframe_grouped_by_user(traj_dir_with_labels,
-                                      select_user=None,
-                                      process_labels=False):
+    def get_dataframe_grouped_by_user(dirs,
+                                      process_labels=True):
         """Parse trajectories and return data frame grouped by user."""
-        assert(isinstance(traj_dir_with_labels, list))
+        assert(isinstance(dirs, list))
         data = []
-        for traj_dir in traj_dir_with_labels:
+        for traj_dir in dirs:
 
             print("Processing ", traj_dir)
             labels_file = os.path.join(traj_dir, "labels.txt")
-            df_labels = GeoLifeData.parse_trajectory_labels(labels_file)
+            if os.path.exists(labels_file):
+                df_labels = GeoLifeData.parse_trajectory_labels(labels_file)
+            else:
+                df_labels = None
+                
             t_dir = os.path.join(traj_dir, "Trajectory")
             user_id = traj_dir.split("/")[-1]
 
-            print(select_user)
-            if select_user is not None and user_id != select_user:
-                continue
-            print(t_dir)
             for file in os.listdir(t_dir):
 
                 if file.endswith(".plt"):
@@ -481,7 +486,8 @@ class GeoLifeData(object):
                     df_traj["transport_mode"] = np.nan
                     df_traj["trip_id"] = file.split(".")[0]
                     df_traj["user_id"] = user_id
-                    label_exists = not (df_traj.iloc[0]["date_time"] >
+                    
+                    label_exists = df_labels is not None and not (df_traj.iloc[0]["date_time"] >
                                         df_labels.iloc[-1]["end_time"] or
                                         df_traj.iloc[-1]["date_time"]
                                         < df_labels.iloc[0]["start_time"])
@@ -497,7 +503,7 @@ class GeoLifeData(object):
     @staticmethod
     def load(hdf_file_name, dataset_dir,
              hdf5_data_name="/geolife_trajectories_labelled",
-             process_labels=True):
+             process_labels=True, remove_unlabelled_trajectories=False):
         """Parse geolife data grouped by user.
 
         Store the datatframe in HDF store to speed up subsequent retrievals.
@@ -506,9 +512,13 @@ class GeoLifeData(object):
         if hdf5_data_name in store.keys():
             data = store[hdf5_data_name]
         else:
-            dirs_with_labels = GeoLifeData.find_dirs_with_labels(dataset_dir)
+            if remove_unlabelled_trajectories:
+                dirs_list = GeoLifeData.find_dirs_with_labels(dataset_dir)
+            else:
+                dirs_list = GeoLifeData.list_all_dirs(dataset_dir)
+                
             data = GeoLifeData.get_dataframe_grouped_by_user(
-                dirs_with_labels, None, process_labels)
+                dirs_list, process_labels)
             store[hdf5_data_name] = data
         store.close()
         return data

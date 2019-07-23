@@ -30,7 +30,6 @@ def create_gif(img_generator, cmap=plt.cm.viridis, gif_name="./__gif_sample.gif"
 def convert_to_grid(nvmdp, S, state_values):
     
     grid = np.zeros((nvmdp.height, nvmdp.width))
-    
     for si, s in enumerate(S):
         x, y = s
         row, col = nvmdp._xy_to_rowcol(x, y)

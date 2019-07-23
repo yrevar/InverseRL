@@ -24,14 +24,14 @@ def softmax(x1, x2):
     min_x = min(x1, x2)
     return max_x + np.log(1 + np.exp(min_x - max_x))
 
-def compute_feature_expectations(trajectory_list, phi):
+def compute_feature_expectations(trajectory_list, phi, s_to_idx, a_to_idx):
     
     n_sa = 0
     for idx, trajectory in enumerate(trajectory_list):
         
         # Iterate over states of trajectory.
         for (s,a) in trajectory[:-1]:
-            s_idx = s_to_idx[s]
+            s_idx = s_to_idx[tuple(s)]
             a_idx = a_to_idx[a]
             if n_sa == 0:
                 feature_exp = phi(s).clone()

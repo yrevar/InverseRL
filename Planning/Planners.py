@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 # Utils
-import InverseRL.utils.PriorityQueue as PriorityQueue
+import utils.PriorityQueue as PriorityQueue
 
 boltzmann_policy = lambda Q, boltzmann_temp: log_boltzmann_dist(Q, boltzmann_temp)
 heuristic_l2 = lambda s1, s2: np.linalg.norm(np.array(s1) - np.array(s2))

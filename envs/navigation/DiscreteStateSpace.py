@@ -43,7 +43,7 @@ class DiscreteStateSpace:
     def get_class_dist(self): # returns what generally referred to as states
         return self.class_ids
 
-    def attach_features(self, kind, attrib_to_feature_map=None):
+    def attach_features(self, kind, attrib_to_feature_map=None, feature_sampler=None):
         if kind == "state":
             self.features_lst = self.space
         elif kind == "state_idx":
@@ -58,11 +58,15 @@ class DiscreteStateSpace:
             if attrib_to_feature_map is None:
                 raise Exception("Attribute to feature map dict must be specified for \"kind={}\"!".format(kind))
             self.features_lst = np.asarray([attrib_to_feature_map[a] for a in self.class_ids.flatten()])
+        elif kind == "attrib_to_feature_sample":
+            if feature_sampler is None:
+                raise Exception("Feature sampler fn must be specified for \"kind={}\"!".format(kind))
+            self.features_lst = np.asarray([feature_sampler(a) for a in self.class_ids.flatten()])
         #self.features_lst = self.features_lst.reshape(tuple(self.limits) + (-1,))
         # if self.features_lst.shape[len(self.idxs.shape):]:
         #     self.feature_dim = self.features_lst.shape[len(self.idxs.shape):]
         # else:
         #     self.feature_dim = 1
-        self.feature_dim = len(self.features_lst[0])
+        self.feature_dim = self.features_lst.shape[1:]
         for idx, features in enumerate(self.features_lst):
             self.states[idx].attach_features(features)

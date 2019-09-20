@@ -1,6 +1,6 @@
 import numpy as np
 
-class Dynamics:
+class AbstractDynamics:
 
     def __init__(self, state_space):
         self.state_space = state_space
@@ -13,7 +13,7 @@ class Dynamics:
         raise NotImplementedError
 
 
-class XYDynamics(Dynamics):
+class XYDynamics(AbstractDynamics):
     ACTIONS = ["U", "D", "L", "R"]
 
     def __init__(self, state_space):
@@ -23,8 +23,7 @@ class XYDynamics(Dynamics):
     def get_func(self):
         raise NotImplementedError
 
-    def transition(self, state, action):
-
+    def tick(self, state, action):
         loc = state.location
         if action == "U" and loc[1] + 1 < self.H:
             loc_prime = (loc[0], loc[1] + 1)

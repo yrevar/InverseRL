@@ -1,7 +1,9 @@
-import numpy as np
 import itertools
+import numpy as np
 from envs.navigation.State import State
+
 from utils.utils import one_hot, one_hot_nd
+
 
 class DiscreteStateSpace:
     ''' Discrete State Space specification class '''
@@ -12,7 +14,7 @@ class DiscreteStateSpace:
         self.n_states = np.product(self.limits)
         self.idxs = self._get_idxs()
         self.space = self._get_space()
-        self.states = self._get_states()
+        self.states_lst, self.loc_to_state_dict, self.state_to_loc_dict = self._get_states()
         self.class_ids = self.idxs # default attributes are state indices
         self.n_classes = self.n_states
         self.features_lst = self.idxs
@@ -26,10 +28,21 @@ class DiscreteStateSpace:
             self.limits + (self.n_dims,))
 
     def _get_states(self):
-        return [State(identifier=s) for s in list(itertools.product(*[np.arange(lim) for lim in self.limits]))]
+
+        state_list = []
+        loc_to_state_dict = {}
+        state_to_loc_dict = {}
+        for loc in list(itertools.product(*[np.arange(lim) for lim in self.limits])):
+            state = State(location=loc)
+            state_list.append(state)
+            loc_to_state_dict[loc] = state
+            state_to_loc_dict[state] = loc
+        return state_list, loc_to_state_dict, state_to_loc_dict
+
+    def get_states_grid(self):
+        return np.asarray(self.states_lst).reshape(self.limits)
 
     def attach_classes(self, class_ids=[], p_dist=None):
-
         S = class_ids
         if p_dist is None:
             p_dist = np.ones(len(S)) / len(S)
@@ -38,7 +51,7 @@ class DiscreteStateSpace:
         self.n_classes = len(class_ids)
         self.class_ids = np.random.choice(S, self.n_states, p=p_dist) #.reshape(self.limits)
         for idx, class_id in enumerate(self.class_ids):
-            self.states[idx].attach_class(class_id)
+            self.states_lst[idx].attach_class(class_id)
 
     def get_class_dist(self): # returns what generally referred to as states
         return self.class_ids
@@ -69,4 +82,4 @@ class DiscreteStateSpace:
         #     self.feature_dim = 1
         self.feature_dim = self.features_lst.shape[1:]
         for idx, features in enumerate(self.features_lst):
-            self.states[idx].attach_features(features)
+            self.states_lst[idx].attach_features(features)

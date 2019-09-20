@@ -4,13 +4,13 @@ import numpy as np
 class State(object):
     ''' State specification class '''
 
-    def __init__(self, identifier=[]):
-        self.identifier = identifier
+    def __init__(self, location=[]):
+        self.location = location
         self.class_id = None
         self.features = None
 
     def get_id(self):
-        return self.identifier
+        return self.location
 
     def get_class(self):
         return self.class_id
@@ -25,24 +25,24 @@ class State(object):
         self.features = features
 
     def __hash__(self):
-        if type(self.identifier).__module__ == np.__name__:
+        if type(self.location).__module__ == np.__name__:
             # Numpy arrays
-            return hash(str(self.identifier))
-        elif self.identifier.__hash__ is None:
-            return hash(tuple(self.identifier))
+            return hash(str(self.location))
+        elif self.location.__hash__ is None:
+            return hash(tuple(self.location))
         else:
-            return hash(self.identifier)
+            return hash(self.location)
 
     def __str__(self):
-        return "State: (" + str(self.identifier) + ")"
+        return "State: (" + str(self.location) + ")"
 
     def __eq__(self, other):
         if isinstance(other, State):
-            return self.identifier == other.identifier
+            return self.location == other.location
         return False
 
     def __getitem__(self, index):
-        return self.identifier[index]
+        return self.location[index]
 
     def __len__(self):
-        return len(self.identifier)
+        return len(self.location)

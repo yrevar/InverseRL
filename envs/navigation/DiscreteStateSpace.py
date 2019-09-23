@@ -15,11 +15,11 @@ class DiscreteStateSpace:
         self.idxs = self._get_idxs()
         self.space = self._get_space()
         self.states_lst, self.loc_to_state_dict, self.state_to_loc_dict = self._get_states()
-        # self.idxs.flatten() # default attributes are state indices
         self.class_ids = np.asarray([0] * self.n_states) # default class 0 for all state
         self.n_classes = 1
-        # self.features_lst = self.idxs
-        # self.feature_dim = self.features_lst.shape[-1]
+        self.features_lst = self.idxs.flatten()
+        self.feature_dim = 1
+        self.reward_lst = np.asarray([-0.42] * self.n_states)
 
     def _get_idxs(self):
         return np.arange(self.n_states).reshape(self.limits)
@@ -33,11 +33,13 @@ class DiscreteStateSpace:
         state_list = []
         loc_to_state_dict = {}
         state_to_loc_dict = {}
+        idx = 0
         for loc in list(itertools.product(*[np.arange(lim) for lim in self.limits])):
-            state = State(location=loc)
+            state = State(location=loc, idx=idx)
             state_list.append(state)
             loc_to_state_dict[loc] = state
             state_to_loc_dict[state] = loc
+            idx += 1
         return state_list, loc_to_state_dict, state_to_loc_dict
 
     def __str__(self):
@@ -84,12 +86,21 @@ class DiscreteStateSpace:
     def class_ids(self):
         return self.class_ids
 
-    def attach_features(self, PHI, *args, **kwargs):
-        self.PHI = PHI(self, *args, **kwargs)
-        self.features_lst = self.PHI()
+    def attach_features(self, PHI_spec):
+        self.PHI_spec = PHI_spec
+        self.features_lst = self.PHI_spec.get_features_lst()
         self.feature_dim = self.features_lst.shape[1:]
         for idx, features in enumerate(self.features_lst):
             self.states_lst[idx].attach_features(features)
 
     def features(self):
         return self.features_lst
+
+    def attach_rewards(self, R_spec):
+        self.R_spec = R_spec
+        self.reward_lst = self.R_spec.get_reward_lst()
+        for idx, reward in enumerate(self.reward_lst):
+            self.states_lst[idx].attach_reward(reward)
+
+    def rewards(self):
+        return self.reward_lst

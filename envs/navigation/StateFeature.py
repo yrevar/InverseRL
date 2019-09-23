@@ -11,15 +11,21 @@ class AbstractStateFeature:
 
     def __call__(self, idx=None):
         if idx is None:
-            return self.features_lst
+            return self.get_features_lst()
         else:
-            return self.features_lst[idx]
+            return self.get_features(idx)
 
     def __getitem__(self, idx):
         return self.features_lst[idx]
 
     def __len__(self):
         return len(self.features_lst)
+
+    def get_features_lst(self):
+        return self.features_lst
+
+    def get_features(self, idx):
+        return self.features_lst[idx]
 
 
 class FeatureStateIndicator(AbstractStateFeature):

@@ -4,10 +4,13 @@ import numpy as np
 class State(object):
     ''' State specification class '''
 
-    def __init__(self, location=[]):
+    def __init__(self, location=[], idx=None,
+                 class_id=None, features=None, reward=None):
         self.location = location
-        self.class_id = None
-        self.features = None
+        self.idx = idx
+        self.class_id = class_id
+        self.features = features
+        self.reward = reward
 
     def get_id(self):
         return self.location
@@ -18,11 +21,17 @@ class State(object):
     def get_features(self):
         return self.features
 
+    def get_reward(self):
+        return self.reward
+
     def attach_class(self, class_id):
         self.class_id = class_id
 
     def attach_features(self, features):
         self.features = features
+
+    def attach_reward(self, reward):
+        self.reward = reward
 
     def __hash__(self):
         if type(self.location).__module__ == np.__name__:

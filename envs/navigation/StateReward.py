@@ -31,7 +31,7 @@ class RewardStateScalar(AbstractStateRewardSpec):
         self.loc_to_reward_dict = loc_to_reward_dict
         self.class_id_to_reward_dict = class_id_to_reward_dict
         self.reward_lst = []
-        for state in self.state_space.states_lst:
+        for state in self.state_space.state_lst:
             # loc_to_reward_dict overrides class_id_to_reward_dict
             if (loc_to_reward_dict is not None) and state.location in loc_to_reward_dict:
                 self.reward_lst.append(loc_to_reward_dict[state.location])

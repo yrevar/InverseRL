@@ -9,23 +9,31 @@ class AbstractStateFeature:
         self.state_space = state_space
         self.features_lst = None
 
-    def __call__(self, idx=None):
-        if idx is None:
-            return self.get_features_lst()
+    def __call__(self, loc=None, idx=None, gridded=False):
+        if loc is not None:
+            return self.get_features_at_loc(loc)
+        elif idx is not None:
+            return self.get_features_at_idx(idx)
         else:
-            return self.get_features(idx)
+            if gridded:
+                return self.get_all_features().reshape(self.state_space.limits + self.features_lst.shape[1:])
+            else:
+                return self.get_all_features()
 
     def __getitem__(self, idx):
-        return self.features_lst[idx]
+        return self.get_features_at_idx(idx)
 
     def __len__(self):
         return len(self.features_lst)
 
-    def get_features_lst(self):
+    def get_all_features(self):
         return self.features_lst
 
-    def get_features(self, idx):
+    def get_features_at_idx(self, idx):
         return self.features_lst[idx]
+
+    def get_features_at_loc(self, loc):
+        return self.features_lst[self.state_space.loc_to_idx_dict[loc]]
 
 
 class FeatureStateIndicator(AbstractStateFeature):

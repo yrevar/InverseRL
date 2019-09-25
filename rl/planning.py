@@ -10,7 +10,6 @@ import utils.PriorityQueue as PriorityQueue
 class ValueIteration:
 
     def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, verbose=False):
-
         self.R = rewards
         self.T = dynamics
         self.S, self.nS = discrete_state_space, len(discrete_state_space)
@@ -34,8 +33,8 @@ class ValueIteration:
             if s_prime is None:  # outside envelope
                 continue
             if debug and s_prime.is_terminal():
-                print("\n {}, {} -> {}, R[s]={:.2f}, T(s,a,s')={:.2f}, V'[TERM]={:.2f}, E[V'[TERM]]={:.2f}".format(
-                    s, a, s_prime, self.R[si], p, self.V[self.s_to_idx[s_prime]],
+                print("\n {}, {} -> {}, R[s]={:.2f}, T(s,a,s')={:.2f},  gamma {:.2f}, V'[TERM]={:.2f}, E[V'[TERM]]={:.2f}".format(
+                    s, a, s_prime, self.R[si], p, self.gamma, self.V[self.s_to_idx[s_prime]],
                     self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()), end="")
             q += self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()
         return self.R[si] + q

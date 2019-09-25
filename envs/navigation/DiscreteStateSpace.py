@@ -127,7 +127,7 @@ class DiscreteStateSpace:
             self.state_lst[idx].attach_reward(reward)
 
     def rewards(self, gridded=False):
-        rewards = np.asarray([self.state_lst[idx].get_reward() for idx in range(self.n_states)])
+        rewards = np.asarray([self.state_lst[idx].get_reward() for idx in range(self.n_states)], dtype=np.float32)
         if gridded:
             return rewards.reshape(*self.limits, 1)
         else:
@@ -144,3 +144,25 @@ class DiscreteStateSpace:
     def reset_terminal_status(self):
         for s in self.state_lst:
             s.set_terminal_status(False)
+
+    def _organize_to_grid(self, values):
+        return np.asarray(values).reshape(self.limits + values[0].shape)
+
+
+class XYClassDistribution:
+
+    def __init__(self, class_sym_to_id_dict, layout_str):
+        self.class_sym_to_id_dict = class_sym_to_id_dict
+        self.layout_str = layout_str
+        self.class_layout = self._create_layout(self.layout_str)
+
+    def _create_layout(self, layout_str):
+        class_layout = []
+        for line in layout_str:
+            class_layout.append([])
+            for sym in line:
+                class_layout[-1].append(self.class_sym_to_id_dict[sym])
+        return class_layout
+
+    def __call__(self):
+        return np.asarray(self.class_layout)

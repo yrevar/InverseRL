@@ -199,3 +199,6 @@ fabric.properties
 ### 
 .idea
 __dev*
+.scrappy/
+.results/
+Datasets

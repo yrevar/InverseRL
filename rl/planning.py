@@ -9,7 +9,7 @@ import utils.PriorityQueue as PriorityQueue
 
 class ValueIteration:
 
-    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, verbose=False):
+    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, verbose=False, log_pi=False):
         self.R = rewards
         self.T = dynamics
         self.S, self.nS = discrete_state_space, len(discrete_state_space)
@@ -18,10 +18,11 @@ class ValueIteration:
         self.s_to_idx = {v: k for k, v in enumerate(self.S)}
         self.a_to_idx = {a: i for i, a in enumerate(self.A)}
         self.verbose = verbose
+        self.log_pi = log_pi
         self.initialize()
 
     def initialize(self):
-        self.V = torch.tensor([r for r in self.S.rewards()], requires_grad=False)
+        self.V = torch.tensor([r for r in self.R], requires_grad=False)
         self.Q = torch.zeros(self.nS, self.nA, dtype=torch.float32)
         self.Pi = torch.log(torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA)
 
@@ -62,8 +63,11 @@ class ValueIteration:
                 # Softmax action selection
                 self.Pi[si, :] = policy(self.Q[si, :].clone())
                 # Softmax value
-                # V[si] = torch.exp(Pi[si, :].clone()).dot(Q[si, :].clone())
-                self.V[si] = self.Pi[si, :].clone().dot(self.Q[si, :].clone())
+                if self.log_pi:
+                    self.V[si] = torch.exp(self.Pi[si, :].clone()).dot(self.Q[si, :].clone())
+                else:
+                    self.V[si] = self.Pi[si, :].clone().dot(self.Q[si, :].clone())
+                    
                 v_delta_max = max(abs(v_s_prev - self.V[si].detach().item()), v_delta_max)
             iterno += 1
 

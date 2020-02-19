@@ -23,8 +23,6 @@ def sample_trajectory(S, A, T, start_state, policy, given_goal,
             trajectory.append((s, None))
             break
             
-        v_curr = values[s_idx].item()
-        
         ## sample next state
         
         # policy  (Note: taking exp because the policy is log softmax)
@@ -33,8 +31,8 @@ def sample_trajectory(S, A, T, start_state, policy, given_goal,
         if greedy_selection:
             a_idx = int(Pr_s.argmax())
         else:
-            
             if values is not None:
+                v_curr = values[s_idx].item()
                 # To prevent suboptimal trajectories with cycles
                 S_primes = [T(S[s_idx], A[a_idx]) for a_idx in range(len(A))]
                 V_primes = np.asarray([values[s_to_idx[sp]].item() for sp in S_primes])

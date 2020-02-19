@@ -9,74 +9,104 @@ import utils.PriorityQueue as PriorityQueue
 
 class ValueIteration:
 
-    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, verbose=False, log_pi=False):
+    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False, log_pi=False):
         self.R = rewards
         self.T = dynamics
         self.S, self.nS = discrete_state_space, len(discrete_state_space)
         self.A, self.nA = self.T.ACTIONS, len(self.T.ACTIONS)
         self.gamma = gamma
+        self.goal = goal
         self.s_to_idx = {v: k for k, v in enumerate(self.S)}
         self.a_to_idx = {a: i for i, a in enumerate(self.A)}
         self.verbose = verbose
-        self.log_pi = log_pi
+        # self.log_pi = log_pi
+        self.check_goal(goal)
+        self.reset()
+
+    def reset(self):
+        self.iterno = 0
         self.initialize()
+
+    def check_goal(self, goal):
+        for s in self.S:
+            if s is goal:
+                return True
+        raise Exception("Goal is not in state space!")
 
     def initialize(self):
         self.V = torch.tensor([r for r in self.R], requires_grad=False)
         self.Q = torch.zeros(self.nS, self.nA, dtype=torch.float32)
-        self.Pi = torch.log(torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA)
+        self.Pi = torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA
+        for s in self.S:
+            if s == self.goal:
+                break
+        if not self.goal.is_terminal():
+            print("Setting goal as terminal state.")
+            self.goal.set_terminal_status(True)
+        self.V[self.s_to_idx[s]] = torch.tensor(0)
+        # if self.log_pi:
+        #     self.Pi = torch.log(torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA)
+
+    def get_tbl_idxs(self, state, action):
+        return self.s_to_idx[state], self.a_to_idx[action]
 
     def q_value(self, s, a, debug=False):
         si = self.s_to_idx[s]
         q = 0
         for s_prime, p in self.T(s, a):
-            # if debug: print(s, a, "- {} ->".format(p), s_prime)
-            if s_prime is None:  # outside envelope
-                continue
-            if debug and s_prime.is_terminal():
-                print("\n {}, {} -> {}, R[s]={:.2f}, T(s,a,s')={:.2f},  gamma {:.2f}, V'[TERM]={:.2f}, E[V'[TERM]]={:.2f}".format(
-                    s, a, s_prime, self.R[si], p, self.gamma, self.V[self.s_to_idx[s_prime]],
-                    self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()), end="")
-            q += self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()
+            if p > 0:
+                if debug: print(s, a, "- {} ->".format(p), s_prime)
+                if s_prime is None:  # outside envelope
+                    continue
+                if debug and s_prime.is_terminal():
+                    print("\n {}, {} -> {}, R[s]={:.2f}, T(s,a,s')={:.2f},  gamma {:.2f}, V'[TERM]={:.2f}, E[V'[TERM]]={:.2f}".format(
+                        s, a, s_prime, self.R[si], p, self.gamma, self.V[self.s_to_idx[s_prime]],
+                        self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()), end="")
+                q += self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()
         return self.R[si] + q
 
     def q_value_list(self, s, debug=False):
         return [self.q_value(s, a, debug) for a in self.A]
 
-    def run(self, n_iters, policy, eps=1e-3, verbose=False, debug=False):
-
-        v_delta_max = float("inf")
-        if verbose: print("Running VI [ ", end="")
-        iterno = 0
-        while iterno < n_iters and v_delta_max > eps:
-
-            if verbose and iterno and iterno % 30 == 0:
-                print(".", end="" if iterno % 300 else "\n\t")
-
-            v_delta_max = 0
-            for si, s in enumerate(self.S):
-                v_s_prev = self.V[si].detach().item()
-                if s.is_terminal():
-                    continue
-                for ai, q in enumerate(self.q_value_list(s, debug=debug)):
-                    self.Q[si, ai] = q
-                # Softmax action selection
-                self.Pi[si, :] = policy(self.Q[si, :].clone())
-                # Softmax value
-                if self.log_pi:
-                    self.V[si] = torch.exp(self.Pi[si, :].clone()).dot(self.Q[si, :].clone())
-                else:
-                    self.V[si] = self.Pi[si, :].clone().dot(self.Q[si, :].clone())
-                    
-                v_delta_max = max(abs(v_s_prev - self.V[si].detach().item()), v_delta_max)
-            iterno += 1
-
-        if iterno == n_iters:
-            if verbose: print(" ] VI didn't converge by {}.".format(iterno))
+    def step(self, policy, debug=False, ret_vals=False):
+        v_delta_max = 0
+        for si, s in enumerate(self.S):
+            v_s__old = self.V[si].detach().item()
+            if s.is_terminal():
+                if debug: print("Terminal: {}".format(s))
+                continue
+            for ai, q in enumerate(self.q_value_list(s, debug=debug)):
+                self.Q[si, ai] = q
+            # Softmax action selection
+            self.Pi[si, :] = policy(self.Q[si, :].clone())
+            # Softmax value
+            # if self.log_pi:
+            #     self.V[si] = torch.exp(self.Pi[si, :].clone()).dot(self.Q[si, :].clone())
+            # else:
+            self.V[si] = self.Pi[si, :].clone().dot(self.Q[si, :].clone())
+            v_delta_max = max(abs(v_s__old - self.V[si].detach().item()), v_delta_max)
+        self.iterno += 1
+        if ret_vals:
+            return self.Pi, self.V, self.Q, self.iterno, v_delta_max
         else:
-            if verbose: print(" ] VI converged @ {}.".format(iterno))
+            return v_delta_max
 
-        return self.Pi, self.V, self.Q, iterno
+    def run(self, max_iters, policy, eps=1e-3, verbose=False, debug=False, ret_vals=False):
+        if verbose: print("Running VI [ ", end="", flush=True)
+        while self.iterno < max_iters:
+            if verbose and self.iterno and self.iterno % 30 == 0:
+                print(".", end="" if self.iterno % 300 else "\n\t", flush=True)
+            v_delta_max = self.step(policy, debug=debug, ret_vals=False)
+            if v_delta_max <= eps:
+                break
+        if self.iterno == max_iters:
+            if verbose: print(" ] VI didn't converge by {}.".format(self.iterno))
+        else:
+            if verbose: print(" ] VI converged @ {}.".format(self.iterno))
+        if ret_vals:
+            return self.Pi, self.V, self.Q, self.iterno, v_delta_max
+        else:
+            return
 
 
 # heuristic_l2 = lambda s1, s2: np.linalg.norm(np.array(s1) - np.array(s2))

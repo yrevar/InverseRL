@@ -1,19 +1,18 @@
 import numpy as np
-import torch, torch.nn as nn, torch.nn.functional as F
+import torch, torch.nn as nn, torch.nn.functional as F, torch.optim as optim
 
 
-class ConvAE(nn.Module):
-    def __init__(self, input_shape, debug=False):
-        super(ConvAE, self).__init__()
+class RewardConvAE(nn.Module):
+    def __init__(self, input_shape, lr=0.1, weight_decay=0, dropout_prob=0., debug=False):
+
+        super(RewardConvAE, self).__init__()
         self.input_shape = input_shape
         self.in_channels = self.input_shape[0]
         self.debug = debug
-        self.dropout_p = 0.5
-        
+        self.dropout_p = dropout_prob
 #         # Input: 28 x 28
 #         self.fc1_in = 3136
 #         self.fc1_in_shape = (16, 14, 14)
-        
         # Input: 32 x 32
         self.fc1_in = 4096
         self.fc1_in_shape = (16, 16, 16)
@@ -36,6 +35,8 @@ class ConvAE(nn.Module):
         self.t_fc1 = nn.Linear(128, self.fc1_in, bias=True)
         self.t_conv2 = nn.ConvTranspose2d(16, 8, (3, 3), stride=2, padding=1, output_padding=1)
         self.t_conv1 = nn.ConvTranspose2d(8, self.in_channels, (3, 3), stride=1, padding=1)
+
+        self.optimizer = optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay)
         
     def encode(self, x, debug=False):
         debug = True if self.debug else debug
@@ -82,13 +83,37 @@ class ConvAE(nn.Module):
         x = self.fc_reward(x)
         x = -self.sigmoid(x)
         return x
+
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def step(self):
+        self.optimizer.step()
+
+    def __call__(self, *args, **kwargs):
+        return self.reward(*args, **kwargs)
+
+
+class RewardLinear(nn.Module):
     
-class LinearRewardModel_Sigmoid(nn.Module):
-    
-    def __init__(self, phi_dim):
+    def __init__(self, phi_dim, lr=0.1, weight_decay=0, debug=False):
         super().__init__()
         self.w = nn.Linear(phi_dim, 1, bias=False)
         self.sigmoid = nn.Sigmoid()
-        
+        self.optimizer = optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay)
+
     def forward(self, phi):
-        return -self.sigmoid(self.w(phi))
+        r_logit = self.w(phi)
+        return r_logit
+
+    def reward(self, phi):
+        return -self.sigmoid(self.forward(phi))
+
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def step(self):
+        self.optimizer.step()
+
+    def __call__(self, *args, **kwargs):
+        return self.reward(*args, **kwargs)

@@ -1,7 +1,11 @@
 import time # hurray
-import random
+import random, io, imageio
 import numpy as np
+from PIL import Image
+from IPython import display
 from collections import defaultdict, Counter
+
+import matplotlib.pyplot as plt
 
 def get_lab_freq(labels, label_to_str=None, precision=4):
 
@@ -81,3 +85,40 @@ def set_global_seeds(seed):
     np.random.seed(seed)
     random.seed(seed)
 
+
+def read_pil_image_from_plt():
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    return Image.open(buf)
+
+class GifMaker:
+    def __init__(self, fname=None, fps=10, live_view=False, mode="I"):
+        self.live_view = live_view
+        if fname is not None:
+            self.gif_writer = imageio.get_writer(fname, mode=mode, fps=fps)
+        else:
+            self.gif_writer = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.done()
+
+    def add_plot(self):
+        self.add_image(read_pil_image_from_plt())
+
+    def add_image(self, img, show=False):
+        if self.gif_writer is not None:
+            self.gif_writer.append_data(np.array(img))
+        if self.live_view:
+            if show: plt.imshow(img)
+            display.clear_output(wait=True)
+            display.display(plt.gcf())
+
+    def done(self):
+        if self.gif_writer is not None:
+            self.gif_writer.close()
+        if self.live_view:
+            plt.clf()

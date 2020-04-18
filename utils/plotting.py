@@ -84,9 +84,12 @@ class NavGridViewPlotter:
             else:
                 # k1 = int(np.ceil(np.sqrt(K)))
                 # k2 = int(np.ceil(K / k1))
-                k1 = H
-                k2 = W
-                data = data.reshape(H, W, k1, k2)[..., np.newaxis]
+                try:
+                    k1 = H
+                    k2 = W
+                    data = data.reshape(H, W, k1, k2)[..., np.newaxis]
+                except:
+                    data = data.reshape(H, W, K, 1)[..., np.newaxis]
         elif n_dim == 4:
             data = data[..., np.newaxis]
         elif n_dim == 5:
@@ -104,4 +107,8 @@ class NavGridViewPlotter:
 
     def add_colorbar(self, *args, **kwargs):
         self.p.colorbar(*args, **kwargs)
+        return self
+
+    def add_trajectories(self, *args, ** kwargs):
+        self.p.add_trajectories(*args, **kwargs)
         return self

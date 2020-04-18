@@ -3,6 +3,7 @@ from collections import defaultdict
 
 # Torch
 import torch
+import navigation_mdp as NvMDP
 
 # Utils
 import utils.PriorityQueue as PriorityQueue
@@ -10,28 +11,34 @@ import utils.PriorityQueue as PriorityQueue
 class ValueIteration:
 
     def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False, log_pi=False):
-        self.R = rewards
+        self.R = rewards.detach()
+        self.R_grad = rewards
         self.T = dynamics
         self.S, self.nS = discrete_state_space, len(discrete_state_space)
         self.A, self.nA = self.T.ACTIONS, len(self.T.ACTIONS)
         self.gamma = gamma
-        self.goal = goal
+        if not isinstance(goal, NvMDP.state.State):
+            self.goal = self.S.at_loc(goal)
+        else:
+            self.goal = goal
         self.s_to_idx = {v: k for k, v in enumerate(self.S)}
         self.a_to_idx = {a: i for i, a in enumerate(self.A)}
         self.verbose = verbose
+        # TODO: Ref: https://github.com/yrevar/InverseRL/blob/master/MLIRL/Differentiable_Value_Iteration_4_Actions.ipynb
+        self.start_reasoning = False
         # self.log_pi = log_pi
-        self.check_goal(goal)
+        # self.check_goal(self.goal)
         self.reset()
 
     def reset(self):
         self.iterno = 0
         self.initialize()
 
-    def check_goal(self, goal):
-        for s in self.S:
-            if s is goal:
-                return True
-        raise Exception("Goal is not in state space!")
+    # def check_goal(self, goal):
+    #     for s in self.S:
+    #         if s is goal:
+    #             return True
+    #     raise Exception("Goal is not in state space!")
 
     def initialize(self):
         self.V = torch.tensor([r for r in self.R], requires_grad=False)
@@ -41,7 +48,7 @@ class ValueIteration:
             if s == self.goal:
                 break
         if not self.goal.is_terminal():
-            print("Setting goal as terminal state.")
+            print("Setting goal as terminal state!")
             self.goal.set_terminal_status(True)
         self.V[self.s_to_idx[s]] = torch.tensor(0)
         # if self.log_pi:
@@ -63,7 +70,10 @@ class ValueIteration:
                         s, a, s_prime, self.R[si], p, self.gamma, self.V[self.s_to_idx[s_prime]],
                         self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()), end="")
                 q += self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()
-        return self.R[si] + q
+        if self.start_reasoning:
+            return self.R_grad[si] + q
+        else:
+            return self.R[si] + q
 
     def q_value_list(self, s, debug=False):
         return [self.q_value(s, a, debug) for a in self.A]
@@ -91,18 +101,32 @@ class ValueIteration:
         else:
             return v_delta_max
 
-    def run(self, max_iters, policy, eps=1e-3, verbose=False, debug=False, ret_vals=False):
-        if verbose: print("Running VI [ ", end="", flush=True)
-        while self.iterno < max_iters:
-            if verbose and self.iterno and self.iterno % 30 == 0:
-                print(".", end="" if self.iterno % 300 else "\n\t", flush=True)
+    def run(self, max_iters, policy, eps=1e-3, reasoning_iters=10, verbose=False, debug=False, ret_vals=False):
+        assert 0 <= reasoning_iters <= max_iters
+        if verbose: print("Learning values [ ", end="", flush=True)
+        while self.iterno < max_iters - reasoning_iters:
+            if verbose and (self.iterno % 30 == 0 or self.iterno == max_iters - reasoning_iters-1):
+                print(" {}".format(self.iterno), end="" if self.iterno == 0 or self.iterno % 300 else "\n\t", flush=True)
             v_delta_max = self.step(policy, debug=debug, ret_vals=False)
             if v_delta_max <= eps:
                 break
-        if self.iterno == max_iters:
-            if verbose: print(" ] VI didn't converge by {}.".format(self.iterno))
+        if self.iterno == max_iters - reasoning_iters:
+            if verbose: print(" ] Stopped @ {}.".format(self.iterno))
         else:
-            if verbose: print(" ] VI converged @ {}.".format(self.iterno))
+            if verbose: print(" ] Converged @ {}.".format(self.iterno))
+
+        if verbose: print("Reasoning [ ", end="", flush=True)
+        stopped_at = self.iterno
+        self.start_reasoning = True
+        k = 0
+        while self.iterno - stopped_at < reasoning_iters:
+            if verbose and ((self.iterno-stopped_at) % 30 == 0 or self.iterno - stopped_at == reasoning_iters-1):
+                print(" {}".format(self.iterno), end="" if self.iterno == stopped_at or self.iterno-stopped_at % 300 else "\n\t", flush=True)
+            _ = self.step(policy, debug=debug, ret_vals=False)
+            k += 1
+
+        if verbose: print(" ] Done.")
+        self.start_reasoning = False
         if ret_vals:
             return self.Pi, self.V, self.Q, self.iterno, v_delta_max
         else:

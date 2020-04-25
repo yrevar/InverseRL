@@ -11,46 +11,53 @@ import utils.PriorityQueue as PriorityQueue
 class ValueIteration:
 
     def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False, log_pi=False):
-        self.R = rewards.detach()
+        if isinstance(rewards, torch.Tensor):
+            self.R = rewards.detach()
+        else:
+            self.R = rewards
         self.R_grad = rewards
         self.T = dynamics
         self.S, self.nS = discrete_state_space, len(discrete_state_space)
         self.A, self.nA = self.T.ACTIONS, len(self.T.ACTIONS)
         self.gamma = gamma
-        if not isinstance(goal, NvMDP.state.State):
-            self.goal = self.S.at_loc(goal)
+        if goal is not None:
+            if not isinstance(goal, NvMDP.state.State):
+                self.goal = self.S.at_loc(goal)
+            else:
+                self.goal = goal
         else:
-            self.goal = goal
+            self.goal = None
+
         self.s_to_idx = {v: k for k, v in enumerate(self.S)}
         self.a_to_idx = {a: i for i, a in enumerate(self.A)}
         self.verbose = verbose
         # TODO: Ref: https://github.com/yrevar/InverseRL/blob/master/MLIRL/Differentiable_Value_Iteration_4_Actions.ipynb
         self.start_reasoning = False
         # self.log_pi = log_pi
-        # self.check_goal(self.goal)
+        self.check_goal(self.goal)
         self.reset()
 
     def reset(self):
         self.iterno = 0
         self.initialize()
 
-    # def check_goal(self, goal):
-    #     for s in self.S:
-    #         if s is goal:
-    #             return True
-    #     raise Exception("Goal is not in state space!")
+    def check_goal(self, goal):
+        if goal is None:
+            if self.verbose: print("No specific goals")
+            return True
+        for s in self.S:
+            if s == goal:
+                return True
+        raise Exception("Goal is not in state space!")
 
     def initialize(self):
         self.V = torch.tensor([r for r in self.R], requires_grad=False)
         self.Q = torch.zeros(self.nS, self.nA, dtype=torch.float32)
         self.Pi = torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA
-        for s in self.S:
-            if s == self.goal:
-                break
-        if not self.goal.is_terminal():
+        if self.goal is not None and self.goal.is_terminal() is False:
             print("Setting goal as terminal state!")
             self.goal.set_terminal_status(True)
-        self.V[self.s_to_idx[s]] = torch.tensor(0)
+            self.V[self.s_to_idx[self.goal]] = torch.tensor(0)
         # if self.log_pi:
         #     self.Pi = torch.log(torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA)
 
@@ -125,7 +132,7 @@ class ValueIteration:
             _ = self.step(policy, debug=debug, ret_vals=False)
             k += 1
 
-        if verbose: print(" ] Done.")
+        if verbose: print(" ] Done ({} iters).".format(reasoning_iters))
         self.start_reasoning = False
         if ret_vals:
             return self.Pi, self.V, self.Q, self.iterno, v_delta_max

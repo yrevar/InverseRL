@@ -1,6 +1,6 @@
-import numpy as np
+import os, numpy as np, os.path as osp
 import torch, torch.nn as nn, torch.nn.functional as F, torch.optim as optim
-
+from matplotlib import pyplot as plt
 
 class PyTorchNNModuleAug(nn.Module):
     """
@@ -25,8 +25,7 @@ class PyTorchNNModuleAug(nn.Module):
         return self.in_channels
 
     def set_optimizer(self, parameters=None):
-        if parameters is None:
-            parameters = self.parameters()
+        parameters = parameters or self.parameters()
         self.optimizer = optim.Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
 
     def zero_grad(self):
@@ -86,8 +85,11 @@ class AutoEncoder(Encoder, Decoder):
     """
     Abstract Class for AutoEncoder.
     """
-    def __init__(self, input_shape, lr=0.1, weight_decay=0, debug=False):
+    def __init__(self, input_shape, lr=0.1, weight_decay=0, store_dir=None, debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
+        self.store_dir = store_dir or "./data/ae_store_dir"
+        self.loss_history = np.array([])
+        self.epoch = 0
 
     def initialize(self):
         self.setup_encoder_layers()
@@ -99,16 +101,65 @@ class AutoEncoder(Encoder, Decoder):
         x_ = self.decode(x_enc)
         return x_
 
+    def train(self, data_sampler, epochs=10,
+              loss_criterion=lambda x,x_: torch.sum((x-x_)**2),
+              data_process_fn=lambda x: x,
+              plot_fn=None, gif_maker=None, x_val=None):
+        # data_sampler.reset_stats()
+        epoch_max = self.epoch + epochs
+        self.epoch = data_sampler.curr_epoch()
+        while data_sampler.curr_epoch() < epoch_max:
+            x = data_sampler.next_batch()
+            x_ = self.forward(x)
+            loss = loss_criterion(x, x_)
+            self.loss_history = np.append(self.loss_history, loss.item())
+            self.epoch = data_sampler.curr_epoch()
+            # plot
+            if data_sampler.epoch_done():
+                if plot_fn is not None:
+                    # plotting
+                    x_val_ = self.forward(x_val)
+                    plot_fn(x_val, x_val_,
+                            title="ConvAE: {}".format('Ep: {:5d}, loss: {:.5f}'.format(
+                                data_sampler.curr_epoch(), loss.item())))
+                    if gif_maker is not None:
+                        gif_maker.add_plot()
+                        # plt.gca().cla()
+                        # plt.clf()
+                else:
+                    print('Ep: {:5d}, loss: {:.5f}'.format(data_sampler.curr_epoch(), loss.item()))
+            # gradient descent
+            self.zero_grad()
+            loss.backward()
+            self.step()
+
+    def save(self, store_dir=None):
+        store_dir = store_dir or self.store_dir
+        os.makedirs(store_dir, exist_ok=True)
+        torch.save({
+            'epoch': self.epoch,
+            'model_state_dict': self.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'loss_history': self.loss_history,
+        }, osp.join(store_dir, "ae_state.pth"))
+
+    def load(self, store_dir=None):
+        store_dir = store_dir or self.store_dir
+        checkpoint = torch.load(osp.join(store_dir, "ae_state.pth"))
+        self.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.epoch = checkpoint['epoch']
+        self.loss_history = checkpoint['loss_history']
 
 
 class ConvFCAutoEncoder(AutoEncoder):
     """
     Class for Convolutional AutoEncoder with FC layers.
     """
-    def __init__(self, input_shape, fc1_in=4096, lr=0.1, weight_decay=0, dropout_prob=0., debug=False):
-        super().__init__(input_shape, lr, weight_decay, debug)
+    def __init__(self, input_shape, z_dim=128, lr=0.1, weight_decay=0, dropout_prob=0., store_dir=None, debug=False):
+        super().__init__(input_shape, lr, weight_decay, store_dir, debug)
         self.dropout_p = dropout_prob
-        self.fc1_in = fc1_in
+        self.z_dim = z_dim
         self.c1 = 8
         self.fc1_in_shape = None
         self.initialize()
@@ -118,11 +169,14 @@ class ConvFCAutoEncoder(AutoEncoder):
         # Encoder layers
         # Channels 1 -> 16, 16 3x3 kernels
         self.conv1 = nn.Conv2d(self.in_channels, c1, (3, 3), padding=1)
-        self.conv2 = nn.Conv2d(c1, c1 * 2, (3, 3), padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(c1, c1 * 4, (3, 3), padding=1)
+        self.pool = nn.MaxPool2d(2, 2, 0, return_indices=True)
+        self.pool_idxs = None
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(self.fc1_in, c1 * 16, bias=True)
-        self.fc2 = nn.Linear(c1 * 16, c1 * 8, bias=True)
+        # is there any easier way?
+        self.fc1_in_shape, self.fc1_in = self.encode(torch.rand(1, *self.input_shape), ret_fc_shape_only=True)
+        self.fc1 = nn.Linear(self.fc1_in, self.z_dim * 4, bias=True) # should this be c1 * self.z_dim * k?
+        self.fc2 = nn.Linear(self.z_dim * 4, self.z_dim, bias=True)
         self.dropout = nn.Dropout(self.dropout_p, inplace=False)
         self.sigmoid = nn.Sigmoid()
         self.fc_reward = nn.Linear(c1 * 8, 1, bias=False)
@@ -131,49 +185,81 @@ class ConvFCAutoEncoder(AutoEncoder):
         c1 = self.c1
         # Decoder layers
         # Channels 1 -> 32, 32 1x1 kernels
-        self.t_fc2 = nn.Linear(c1 * 8, c1 * 16, bias=True)
-        self.t_fc1 = nn.Linear(c1 * 16, self.fc1_in, bias=True)
-        self.t_conv2 = nn.ConvTranspose2d(c1 * 2, c1, (3, 3), stride=2, padding=1, output_padding=1)
+        self.t_fc2 = nn.Linear(self.z_dim, self.z_dim * 4, bias=True)
+        self.t_fc1 = nn.Linear(self.z_dim * 4, self.fc1_in, bias=True)
+        self.t_conv2 = nn.ConvTranspose2d(c1 * 4, c1, (3, 3), stride=1, padding=1)
         self.t_conv1 = nn.ConvTranspose2d(c1, self.in_channels, (3, 3), stride=1, padding=1)
+        self.unpool = nn.MaxUnpool2d(2, 2, 0)
 
-    def encode(self, x, debug=False):
+    def encode(self, x, debug=False, ret_pool_idxs=False, ret_fc_shape_only=False):
         debug = True if self.debug else debug
-        if debug: print(x.shape)
+        pool_idxs = []
+
+        if debug: print("Encoding Input: ", x.shape)
+        # Conv1-pool1
         x = torch.relu(self.conv1(x))
-        if debug: print(x.shape)
-        x = self.pool(x)
-        if debug: print(x.shape)
+        if debug: print("\tConv1: ", x.shape)
+        x, idxs = self.pool(x)
+        pool_idxs.append(idxs)
+        if debug: print("\tPool1: ", x.shape)
+        # Conv2-pool2
         x = torch.relu(self.conv2(x))
-        if debug: print(x.shape)
-        x = self.pool(x)
-        if debug: print(x.shape)
-
-        self.fc1_in_shape = x[0].shape
-
+        if debug: print("\tConv2: ", x.shape)
+        x, idxs = self.pool(x)
+        pool_idxs.append(idxs)
+        if debug: print("\tPool2: ", x.shape)
+        # fc1
+        # self.fc1_in_shape = x[0].shape
+        if ret_fc_shape_only:
+            return x[0].shape, np.product(x.size()[1:])
         x = x.view(-1, np.product(x.size()[1:]))
-        if debug: print(x.shape)
+        if debug: print("\tReshape: ", x.shape)
         x = torch.relu(self.fc1(x))
+        if debug: print("\tFc1: ", x.shape)
+        # fc1-dropout
         x = self.dropout(x)
-        if debug: print(x.shape)
+        if debug: print("\tDropout1: ", x.shape)
+        # fc2
         x = self.fc2(x)
-        if debug: print(x.shape)
-        return x
+        if debug: print("\tFc2: ", x.shape)
 
-    def decode(self, x, debug=False):
+        self.pool_idxs = pool_idxs
+        if ret_pool_idxs:
+            return x, pool_idxs
+        else:
+            return x
+
+    def decode(self, x, debug=False, pool_idxs=None):
         debug = True if self.debug else debug
-        if debug: print(x.shape)
+        if pool_idxs is None:
+            pool_idxs = self.pool_idxs
+        if pool_idxs is None:
+            _, pool_idxs = self.encode(torch.rand(1, *self.input_shape), ret_pool_idxs=True)
+        if debug: print("Decoding Input: ", x.shape)
+        # un-fc2
         x = torch.relu(self.t_fc2(x))
-        if debug: print(x.shape)
+        if debug: print("\tUn-FC2: ", x.shape)
+        # un-fc1-dropout
         x = self.dropout(x)
-        if debug: print(x.shape)
+        if debug: print("\tUn-Dropout1: ", x.shape)
+        # un-fc1
         x = torch.relu(self.t_fc1(x))
-        if debug: print(x.shape)
+        if debug: print("\tUn-FC1: ", x.shape)
+
+        # un-conv2-pool2
         x = x.view(-1, *self.fc1_in_shape)
-        if debug: print(x.shape)
+        if debug: print("\tReshape: ", x.shape)
+        x = self.unpool(x, pool_idxs.pop())
+        if debug: print("\tUn-Pool2: ", x.shape)
+        # un-conv2
         x = torch.relu(self.t_conv2(x))
-        if debug: print(x.shape)
+        if debug: print("\tUn-Conv2: ", x.shape)
+        # un-conv1-pool1
+        x = self.unpool(x, pool_idxs.pop())
+        if debug: print("\tUn-Pool1: ", x.shape)
+        # un-conv1
         x = self.sigmoid(self.t_conv1(x))
-        if debug: print(x.shape)
+        if debug: print("\tSigmoid + Un-Conv1: ", x.shape)
         return x
 
     def reward(self, x, return_latent=False, debug=False):

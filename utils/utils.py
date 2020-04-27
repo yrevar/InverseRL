@@ -7,6 +7,9 @@ from collections import defaultdict, Counter
 
 import matplotlib.pyplot as plt
 
+def compute_epoch(batch_idx, batch_size, data_size):
+    return int(np.floor(batch_idx * batch_size/ data_size))
+
 def get_lab_freq(labels, label_to_str=None, precision=4):
 
     l_cnts = dict(Counter(labels))

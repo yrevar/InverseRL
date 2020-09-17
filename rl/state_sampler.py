@@ -44,3 +44,6 @@ class StateSampler:
 
     def epoch_done(self):
         return self.epoch_changed or (self.curr_epoch() == 0 and self.batch_idx == 1)
+
+    def get_batch_size(self):
+        return self.batch_size

@@ -4,7 +4,8 @@ import rl.planning as Plan
 import rl.policy as Policy
 
 def run_mlirl(tau_lst, S, PHI, T, R_model, gamma=0.95, mlirl_iters=100,
-                     vi_max_iters=150, reasoning_iters=50, boltzmann_temp=0.01, vi_eps=1e-4):
+              vi_max_iters=150, reasoning_iters=50, policy=lambda q: Policy.Boltzmann(q, boltzmann_temp=0.01),
+              vi_eps=1e-4):
 
     # assert len(set([tau[-1][0] for tau in tau_lst])) <= 1, "All trajectories must have same goal."
 
@@ -25,9 +26,7 @@ def run_mlirl(tau_lst, S, PHI, T, R_model, gamma=0.95, mlirl_iters=100,
                     # Run VI for this goal
                     print("Running VI (goal: {})".format(goal))
                     VI_by_goal[goal] = Plan.ValueIteration(S, R_curr, T, verbose=True, log_pi=False, gamma=gamma, goal=goal)
-                    VI_by_goal[goal].run(vi_max_iters,
-                                         lambda q: Policy.Boltzmann(q, boltzmann_temp=boltzmann_temp),
-                                         reasoning_iters=reasoning_iters, verbose=True, debug=False, eps=vi_eps)
+                    VI_by_goal[goal].run(vi_max_iters, policy, reasoning_iters=reasoning_iters, verbose=True, debug=False, eps=vi_eps)
                 for s, a in tau:
                     if a is not None: # terminal state action is assumed None
                         loss += -torch.log(VI_by_goal[goal].Pi[VI_by_goal[goal].get_tbl_idxs(S.at_loc(s), a)])

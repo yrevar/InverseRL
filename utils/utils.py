@@ -1,4 +1,5 @@
 import time # hurray
+import os.path as osp
 import random, io, imageio
 import numpy as np
 from PIL import Image
@@ -6,6 +7,12 @@ from IPython import display
 from collections import defaultdict, Counter
 
 import matplotlib.pyplot as plt
+
+def normalize(np_array):
+    normed = (np_array - np_array.min()) / (np_array.max() - np_array.min())
+    normed = np.minimum(normed, 1)
+    normed = np.maximum(normed, 0)
+    return normed
 
 def compute_epoch(batch_idx, batch_size, data_size):
     return int(np.floor(batch_idx * batch_size/ data_size))
@@ -99,7 +106,12 @@ class GifMaker:
     def __init__(self, fname=None, fps=10, live_view=False, mode="I"):
         self.live_view = live_view
         if fname is not None:
-            self.gif_writer = imageio.get_writer(fname, mode=mode, fps=fps)
+            if osp.exists(fname):
+                ans = input("Gif file exists. Replace? y/n")
+            if ans in ["y", "Y"]:
+                self.gif_writer = imageio.get_writer(fname, mode=mode, fps=fps)
+            else:
+                self.gif_writer = None
         else:
             self.gif_writer = None
 
@@ -125,3 +137,32 @@ class GifMaker:
             self.gif_writer.close()
         if self.live_view:
             plt.clf()
+
+def get_xyz(img_2d):
+    x_list, y_list, z_list = [], [], []
+    for row in range(len(img_2d)):
+        for col in range(len(img_2d[0])):
+            x, y = row, col
+            x_list.append(x)
+            y_list.append(y)
+            z_list.append(img_2d[row, col])
+    return x_list, y_list, z_list
+
+def plot_3d_barplot(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm.jet):
+    X, Y, Z = get_xyz(img_2d)
+    ax = fig.gca(projection='3d')
+    top = Z
+    bottom = np.zeros_like(top)
+    width = depth = 1
+    surf = ax.bar3d(Y, X, bottom, width, depth, top, shade=True)
+    ax.set_zlim(0, 1.)
+    ax.view_init(elev=elev, azim=azim)
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+
+def plot_3d_surface(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm.jet):
+    X, Y, Z = get_xyz(img_2d)
+    ax = fig.gca(projection='3d')
+    surf = ax.plot_trisurf(Y, X, Z, cmap=plt.cm.jet, linewidth=0.2, vmin=vmin, vmax=vmax)
+    ax.set_zlim(0, 1.)
+    ax.view_init(elev=elev, azim=azim)
+    fig.colorbar(surf, shrink=0.5, aspect=5)

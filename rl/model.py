@@ -85,24 +85,30 @@ class AutoEncoder(Encoder, Decoder):
     """
     Abstract Class for AutoEncoder.
     """
-    def __init__(self, input_shape, lr=0.1, weight_decay=0, store_dir=None, debug=False):
+    def __init__(self, input_shape, lr=0.1, weight_decay=0, store_dir="./data/ae_store_dir", debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
-        self.store_dir = store_dir or "./data/ae_store_dir"
+        self.store_dir = store_dir
         self.loss_history = np.array([])
         self.epoch = 0
+        self.initialized = False
+        self.pre_trained_weights = False
 
     def initialize(self):
         self.setup_encoder_layers()
         self.setup_decoder_layers()
         self.set_optimizer()
+        self.initialized = True
 
-    def forward(self, x):
+    def forward(self, x, return_latent=False):
         x_enc = self.encode(x)
         x_ = self.decode(x_enc)
-        return x_
+        if return_latent:
+            return x_, x_enc
+        else:
+            return x_
 
     def train(self, data_sampler, epochs=10,
-              loss_criterion=lambda x,x_: torch.sum((x-x_)**2),
+              loss_criterion=lambda x,x_: torch.sum((x-x_)**2/len(x)),
               data_process_fn=lambda x: x,
               plot_fn=None, gif_maker=None, x_val=None):
         # data_sampler.reset_stats()
@@ -116,79 +122,92 @@ class AutoEncoder(Encoder, Decoder):
             self.epoch = data_sampler.curr_epoch()
             # plot
             if data_sampler.epoch_done():
+                print('Ep: {:5d}, loss: {:.5f}'.format(data_sampler.curr_epoch(), loss.item()))
                 if plot_fn is not None:
                     # plotting
-                    x_val_ = self.forward(x_val)
-                    plot_fn(x_val, x_val_,
-                            title="ConvAE: {}".format('Ep: {:5d}, loss: {:.5f}'.format(
+                    x_val_recon, x_latent = self.forward(x_val, return_latent=True)
+                    plot_fn(x_val, x_val_recon, x_latent, self.loss_history, data_sampler.get_batch_size(),
+                            title="ConvAE Training, {}.".format('Ep: {:5d}, loss: {:.5f}'.format(
                                 data_sampler.curr_epoch(), loss.item())))
                     if gif_maker is not None:
                         gif_maker.add_plot()
-                        # plt.gca().cla()
-                        # plt.clf()
-                else:
-                    print('Ep: {:5d}, loss: {:.5f}'.format(data_sampler.curr_epoch(), loss.item()))
+                        plt.gca().cla()
+                        plt.clf()
             # gradient descent
             self.zero_grad()
             loss.backward()
             self.step()
 
+    def get_state_dict(self):
+        raise NotImplementedError
+
+    def get_optimizer_state_dict(self):
+        raise NotImplementedError
+
     def save(self, store_dir=None):
+        if not self.initialized:
+            raise Exception("Failed to store. Can only load state after being initialized.")
         store_dir = store_dir or self.store_dir
         os.makedirs(store_dir, exist_ok=True)
         torch.save({
             'epoch': self.epoch,
-            'model_state_dict': self.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
+            'model_state_dict': self.get_state_dict(),
+            'optimizer_state_dict': self.get_optimizer_state_dict(),
             'loss_history': self.loss_history,
         }, osp.join(store_dir, "ae_state.pth"))
 
     def load(self, store_dir=None):
+        if not self.initialized:
+            raise Exception("Failed to load. Can only load state after being initialized.")
         store_dir = store_dir or self.store_dir
         checkpoint = torch.load(osp.join(store_dir, "ae_state.pth"))
         self.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epoch = checkpoint['epoch']
         self.loss_history = checkpoint['loss_history']
+        self.pre_trained_weights = True
 
 
 class ConvFCAutoEncoder(AutoEncoder):
     """
     Class for Convolutional AutoEncoder with FC layers.
     """
-    def __init__(self, input_shape, z_dim=128, lr=0.1, weight_decay=0, dropout_prob=0., store_dir=None, debug=False):
+    def __init__(self, input_shape, z_dim=128, lr=0.1, weight_decay=0, dropout_prob=0.,
+                 c1=8, cx1=4, fx1=4, store_dir=None, debug=False):
         super().__init__(input_shape, lr, weight_decay, store_dir, debug)
         self.dropout_p = dropout_prob
         self.z_dim = z_dim
-        self.c1 = 8
+        self.c1 = c1
+        self.cx1 = cx1
+        self.fx1 = fx1
         self.fc1_in_shape = None
         self.initialize()
 
     def setup_encoder_layers(self):
-        c1 = self.c1
+        cin, c1, cx1, fx1, z_dim = self.in_channels, self.c1, self.cx1, self.fx1, self.z_dim
         # Encoder layers
         # Channels 1 -> 16, 16 3x3 kernels
-        self.conv1 = nn.Conv2d(self.in_channels, c1, (3, 3), padding=1)
-        self.conv2 = nn.Conv2d(c1, c1 * 4, (3, 3), padding=1)
+        self.conv1 = nn.Conv2d(cin, c1, (3, 3), padding=1)
+        self.conv2 = nn.Conv2d(c1, c1 * cx1, (3, 3), padding=1)
         self.pool = nn.MaxPool2d(2, 2, 0, return_indices=True)
         self.pool_idxs = None
         self.flatten = nn.Flatten()
         # is there any easier way?
         self.fc1_in_shape, self.fc1_in = self.encode(torch.rand(1, *self.input_shape), ret_fc_shape_only=True)
-        self.fc1 = nn.Linear(self.fc1_in, self.z_dim * 4, bias=True) # should this be c1 * self.z_dim * k?
-        self.fc2 = nn.Linear(self.z_dim * 4, self.z_dim, bias=True)
+        self.fc1 = nn.Linear(self.fc1_in, z_dim * fx1, bias=True) # should this be c1 * self.z_dim * k?
+        self.fc2 = nn.Linear(z_dim * fx1, z_dim, bias=True)
         self.dropout = nn.Dropout(self.dropout_p, inplace=False)
         self.sigmoid = nn.Sigmoid()
-        self.fc_reward = nn.Linear(c1 * 8, 1, bias=False)
+        self.fc_reward = nn.Linear(z_dim, 1, bias=False)
 
     def setup_decoder_layers(self):
-        c1 = self.c1
+        cin, c1, cx1, fx1, z_dim = self.in_channels, self.c1, self.cx1, self.fx1, self.z_dim
         # Decoder layers
         # Channels 1 -> 32, 32 1x1 kernels
-        self.t_fc2 = nn.Linear(self.z_dim, self.z_dim * 4, bias=True)
-        self.t_fc1 = nn.Linear(self.z_dim * 4, self.fc1_in, bias=True)
-        self.t_conv2 = nn.ConvTranspose2d(c1 * 4, c1, (3, 3), stride=1, padding=1)
-        self.t_conv1 = nn.ConvTranspose2d(c1, self.in_channels, (3, 3), stride=1, padding=1)
+        self.t_fc2 = nn.Linear(z_dim, z_dim * fx1, bias=True)
+        self.t_fc1 = nn.Linear(z_dim * fx1, self.fc1_in, bias=True)
+        self.t_conv2 = nn.ConvTranspose2d(c1 * cx1, c1, (3, 3), stride=1, padding=1)
+        self.t_conv1 = nn.ConvTranspose2d(c1, cin, (3, 3), stride=1, padding=1)
         self.unpool = nn.MaxUnpool2d(2, 2, 0)
 
     def encode(self, x, debug=False, ret_pool_idxs=False, ret_fc_shape_only=False):
@@ -273,6 +292,12 @@ class ConvFCAutoEncoder(AutoEncoder):
 
     def __call__(self, *args, **kwargs):
         return self.reward(*args, **kwargs)
+
+    def get_state_dict(self):
+        return self.state_dict()
+
+    def get_optimizer_state_dict(self):
+        return self.optimizer.state_dict()
 
 
 class ConvAutoEncoder(AutoEncoder):

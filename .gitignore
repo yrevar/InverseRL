@@ -201,4 +201,4 @@ fabric.properties
 __dev*
 .scrappy/
 .results/
-Datasets
+datastore

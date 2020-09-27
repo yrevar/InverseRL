@@ -393,7 +393,7 @@ class RewardLinear(Encoder):
             phi_dim = self.in_shape()
         else:
             raise Exception("Can't handle input_shape {}!".format(self.in_shape()))
-        self.fc = nn.Linear(phi_dim, 1, bias=False)
+        self.fc_reward = nn.Linear(phi_dim, 1, bias=False)
 
     def encode(self, x, debug=False):
         return x

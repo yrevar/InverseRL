@@ -76,7 +76,9 @@ class StanfordCampusDataset:
                 track_list.append(df_track[["xcenter", "ycenter"]].values)
         return track_list
 
-    def show_video(self, scene, video, select_track_ids="all", window = "test"):
+    def show_video(self, scene, video,
+                   fps=20, frame_start=None, frame_end=None,
+                   select_track_ids="all", window = "test"):
 
         video_file = self.get_video_file_path(scene, video)
         ann_df = self.get_annotations_df(scene, video)
@@ -84,7 +86,7 @@ class StanfordCampusDataset:
         if select_track_ids == "all":
             select_track_ids = ann_df.track_id.unique()
 
-        video = VideoHelper(video_file, preload_frames=5)
+        video = VideoHelper(video_file, frame_start=frame_start, frame_end=frame_end)
 
         ann_df = ann_df.loc[ann_df['track_id'].isin(select_track_ids)]
         frame, df_frame_list = list(zip(*ann_df.groupby("frame")))
@@ -101,8 +103,51 @@ class StanfordCampusDataset:
                             1., (0, 255, 0), 2, cv2.LINE_AA)
                 # cv2.putText(img, line, (ln_x, ln_y), font_face, font_scale, font_color, font_thickness)
             cv2.imshow(window, frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(int(1000 * 1 / int(fps))) & 0xFF == ord('q'):
                 break
             video.seek_next()
+        video.release()
+        cv2.destroyWindow(window)
+        cv2.destroyAllWindows()
+
+    def create_video(self, scene, video, store_file="./video.avi",
+                     fps=20, frame_start=None, frame_end=None,
+                     select_track_ids="all", window = "test"):
+
+        video_file = self.get_video_file_path(scene, video)
+        ann_df = self.get_annotations_df(scene, video)
+
+        if select_track_ids == "all":
+            select_track_ids = ann_df.track_id.unique()
+
+        video = VideoHelper(video_file, frame_start=frame_start, frame_end=frame_end)
+        video_out = None
+
+        ann_df = ann_df.loc[ann_df['track_id'].isin(select_track_ids)]
+        frame, df_frame_list = list(zip(*ann_df.groupby("frame")))
+
+        while not video.is_finished():
+            frame, frame_no = video.curr_frame()
+            print("Processing frame: {} / {}\r".format(frame_no + 1, video.length()), end="")
+            if frame_no >= len(df_frame_list):
+                print("frame {} missing in df".format(frame_no))
+            else:
+                for i, df_frame in df_frame_list[frame_no].iterrows():
+                    cv2.rectangle(frame, (df_frame.xmin, df_frame.ymin),
+                                  (df_frame.xmax, df_frame.ymax),
+                                  (255, 0, 0), 2)
+                    cv2.putText(frame, "{}: {}".format(df_frame.track_id, df_frame.label),
+                                (df_frame.xmin, df_frame.ymin),
+                                cv2.FONT_HERSHEY_PLAIN,
+                                1., (0, 255, 0), 2, cv2.LINE_AA)
+                    # cv2.putText(img, line, (ln_x, ln_y), font_face, font_scale, font_color, font_thickness)
+                if video_out is None:
+                    fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
+                    video_out = cv2.VideoWriter(store_file, fourcc, fps, (frame.shape[1], frame.shape[0]))
+                video_out.write(frame)
+            video.seek_next()
+        print("Finished writing video at {}".format(store_file))
+        video.release()
+        video_out.release()
         cv2.destroyWindow(window)
         cv2.destroyAllWindows()

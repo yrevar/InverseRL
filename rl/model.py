@@ -380,10 +380,10 @@ class RewardLinear(Encoder):
         self.initialize()
 
     def init_const(self, value=1.):
-        torch.nn.init.constant_(self.w.weight.data, value)
+        torch.nn.init.constant_(self.fc_reward.weight.data, value)
 
     def init_uniform(self, lo=-1, hi=1):
-        torch.nn.init.uniform_(self.w.weight.data, lo, hi)
+        torch.nn.init.uniform_(self.fc_reward.weight.data, lo, hi)
 
     def setup_encoder_layers(self):
         if isinstance(self.in_shape(), list) or isinstance(self.in_shape(), tuple):
@@ -393,7 +393,7 @@ class RewardLinear(Encoder):
             phi_dim = self.in_shape()
         else:
             raise Exception("Can't handle input_shape {}!".format(self.in_shape()))
-        self.fc_reward = nn.Linear(phi_dim, 1, bias=False)
+        self.fc = nn.Linear(phi_dim, 1, bias=False)
 
     def encode(self, x, debug=False):
         return x
@@ -409,3 +409,61 @@ class RewardLinear(Encoder):
 
     def __call__(self, *args, **kwargs):
         return self.reward(*args, **kwargs)
+
+class LinearUnit(nn.Module):
+    """
+    Class for Linear Unit.
+    """
+    def __init__(self, input_dim, output_dim, bias=False, lr=0.1, weight_decay=0, debug=False):
+        super(LinearUnit, self).__init__()
+        assert isinstance(input_dim, int) and isinstance(output_dim, int)
+        self.input_dim, self.bias, self.output_dim = input_dim, bias, output_dim
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.debug = debug
+        self.optimizer = None
+        self.initialize()
+
+    def _validate_dim(self, x):
+        if isinstance(x, list) or isinstance(x, tuple):
+            assert len(x) == 1
+        elif isinstance(x, int):
+            pass
+        else:
+            raise Exception("Can't handle dim {}!".format(x))
+
+    def _validate_inputs(self):
+        self._validate_dim(self.input_dim)
+        self._validate_dim(self.output_dim)
+
+    def init_const(self, value=1.):
+        torch.nn.init.constant_(self.fc.weight.data, value)
+
+    def init_uniform(self, lo=-1, hi=1):
+        torch.nn.init.uniform_(self.fc.weight.data, lo, hi)
+
+    def initialize(self):
+        self._validate_inputs()
+        self.fc = nn.Linear(self.input_dim, self.output_dim, bias=self.bias)
+        self.set_optimizer()
+
+    def set_optimizer(self, parameters=None):
+        parameters = parameters or self.parameters()
+        self.optimizer = optim.Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
+
+    def zero_grad(self):
+        if self.optimizer is None:
+            raise Exception("Optimizer is not setup!")
+        self.optimizer.zero_grad()
+
+    def step(self):
+        if self.optimizer is None:
+            raise Exception("Optimizer is not setup!")
+        self.optimizer.step()
+
+    def forward(self, x, debug=False):
+        y = self.fc(x)
+        return y
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)

@@ -38,6 +38,11 @@ class PyTorchNNModuleAug(nn.Module):
             raise Exception("Optimizer is not setup!")
         self.optimizer.step()
 
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path):
+        self.load_state_dict(torch.load(path))
 
 class Encoder(PyTorchNNModuleAug):
     """
@@ -107,7 +112,7 @@ class AutoEncoder(Encoder, Decoder):
         else:
             return x_
 
-    def train(self, data_sampler, epochs=10,
+    def run_training(self, data_sampler, epochs=10,
               loss_criterion=lambda x,x_: torch.sum((x-x_)**2/len(x)),
               data_process_fn=lambda x: x,
               plot_fn=None, gif_maker=None, x_val=None):
@@ -144,7 +149,7 @@ class AutoEncoder(Encoder, Decoder):
     def get_optimizer_state_dict(self):
         raise NotImplementedError
 
-    def save(self, store_dir=None):
+    def save(self, store_dir=None, fname="ae_state.pth"):
         if not self.initialized:
             raise Exception("Failed to store. Can only load state after being initialized.")
         store_dir = store_dir or self.store_dir
@@ -154,13 +159,13 @@ class AutoEncoder(Encoder, Decoder):
             'model_state_dict': self.get_state_dict(),
             'optimizer_state_dict': self.get_optimizer_state_dict(),
             'loss_history': self.loss_history,
-        }, osp.join(store_dir, "ae_state.pth"))
+        }, osp.join(store_dir, fname))
 
-    def load(self, store_dir=None):
+    def load(self, store_dir=None, fname="ae_state.pth"):
         if not self.initialized:
             raise Exception("Failed to load. Can only load state after being initialized.")
         store_dir = store_dir or self.store_dir
-        checkpoint = torch.load(osp.join(store_dir, "ae_state.pth"))
+        checkpoint = torch.load(osp.join(store_dir, fname))
         self.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epoch = checkpoint['epoch']
@@ -181,6 +186,7 @@ class ConvFCAutoEncoder(AutoEncoder):
         self.cx1 = cx1
         self.fx1 = fx1
         self.fc1_in_shape = None
+        self.reward_activation_type = "sigmoid"
         self.initialize()
 
     def setup_encoder_layers(self):
@@ -198,6 +204,9 @@ class ConvFCAutoEncoder(AutoEncoder):
         self.fc2 = nn.Linear(z_dim * fx1, z_dim, bias=True)
         self.dropout = nn.Dropout(self.dropout_p, inplace=False)
         self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU()
+        self.log_sigmoid = nn.LogSigmoid()
+        self.reward_activation = self.sigmoid
         self.fc_reward = nn.Linear(z_dim, 1, bias=False)
 
     def setup_decoder_layers(self):
@@ -248,6 +257,9 @@ class ConvFCAutoEncoder(AutoEncoder):
         else:
             return x
 
+    def bottleneck_grads(self):
+        return self.fc_reward.weight.grad
+
     def decode(self, x, debug=False, pool_idxs=None):
         debug = True if self.debug else debug
         if pool_idxs is None:
@@ -281,14 +293,27 @@ class ConvFCAutoEncoder(AutoEncoder):
         if debug: print("\tSigmoid + Un-Conv1: ", x.shape)
         return x
 
+    def set_reward_activation(self, type="relu"):
+        self.reward_activation_type = type
+        assert type in ["relu", "sigmoid", "log_sigmoid"]
+        if type == "relu":
+            self.reward_activation = self.relu
+        elif type == "sigmoid":
+            self.reward_activation = self.sigmoid
+        else:
+            self.reward_activation = self.log_sigmoid
+
     def reward(self, x, return_latent=False, debug=False):
         z = self.encode(x, debug=debug)
         r = self.fc_reward(z)
-        pr = -self.sigmoid(r)
-        if return_latent:
-            return pr, z
+        if self.reward_activation_type in ["relu", "sigmoid"]:
+            r = -self.reward_activation(r)
         else:
-            return pr
+            r = self.reward_activation(r)
+        if return_latent:
+            return r, z
+        else:
+            return r
 
     def __call__(self, *args, **kwargs):
         return self.reward(*args, **kwargs)

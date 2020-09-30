@@ -8,12 +8,13 @@ def sample_trajectory(S, A, T, start_state, policy, given_goal,
     
     # state tuple -> idx
     s_to_idx = {v:k for k,v in enumerate(S)}
-    given_goal_idx = s_to_idx[given_goal]
+    given_goal_idx = s_to_idx[S.at_loc(given_goal)]
     steps = 0
     
     ## start state
-    s = start_state
-    
+
+    s = S.at_loc(start_state)
+
     while steps < horizon:
         
         ## add state
@@ -46,7 +47,9 @@ def sample_trajectory(S, A, T, start_state, policy, given_goal,
             a_idx = int(np.random.choice(len(A), p=Pr_s))
             
         trajectory.append((S[s_idx], A[a_idx]))
-        s = T(S[s_idx], A[a_idx])
+        s_prime_lst, s_prob = list(zip(*T(S[s_idx], A[a_idx])))
+        slct_s_prime_idx = np.random.choice(np.arange(len(s_prob)), p=s_prob)
+        s = s_prime = s_prime_lst[slct_s_prime_idx]
         
         steps += 1
         

@@ -108,10 +108,12 @@ class GifMaker:
         if fname is not None:
             if osp.exists(fname):
                 ans = input("Gif file exists. Replace? y/n")
-            if ans in ["y", "Y"]:
-                self.gif_writer = imageio.get_writer(fname, mode=mode, fps=fps)
+                if ans in ["y", "Y"]:
+                    self.gif_writer = imageio.get_writer(fname, mode=mode, fps=fps)
+                else:
+                    self.gif_writer = None
             else:
-                self.gif_writer = None
+                self.gif_writer = imageio.get_writer(fname, mode=mode, fps=fps)
         else:
             self.gif_writer = None
 

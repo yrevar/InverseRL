@@ -5,6 +5,7 @@ import rl.policy as Policy
 
 from matplotlib import cm as cm, pyplot as plt, colors as mplotcolors
 
+
 def run_mlirl(tau_lst, S, PHI, T, R_model, gamma=0.95, mlirl_iters=100,
               vi_max_iters=150, reasoning_iters=50, policy=lambda q: Policy.Boltzmann(q, boltzmann_temp=0.01),
               vi_eps=1e-4, checkpoint_freq=10, store_dir="./data/mlirl"):
@@ -33,9 +34,9 @@ def run_mlirl(tau_lst, S, PHI, T, R_model, gamma=0.95, mlirl_iters=100,
                     VI_by_goal[goal].run(vi_max_iters, policy, reasoning_iters=reasoning_iters, verbose=True, debug=False, eps=vi_eps)
                 for s, a in tau:
                     if a is not None: # terminal state action is assumed None
-                        loss += -torch.log(VI_by_goal[goal].Pi[VI_by_goal[goal].get_tbl_idxs(S.at_loc(s), a)])
+                        # loss += -torch.log(VI_by_goal[goal].Pi[VI_by_goal[goal].get_tbl_idxs(S.at_loc(s), a)])
                         # laplace smoothing
-                        # loss += -torch.log(VI_by_goal[goal].Pi[VI_by_goal[goal].get_tbl_idxs(S.at_loc(s), a)] + 1e-20)
+                        loss += -torch.log(VI_by_goal[goal].Pi[VI_by_goal[goal].get_tbl_idxs(S.at_loc(s), a)] + 1e-20)
 
             ll = np.exp(-loss.detach().item())
             log_likelihoods_history.append(ll)
@@ -50,8 +51,8 @@ def run_mlirl(tau_lst, S, PHI, T, R_model, gamma=0.95, mlirl_iters=100,
             bottleneck_grads = R_model.bottleneck_grads()
             bottleneck_grad_history.append(bottleneck_grads.numpy().copy())
             r_history.append(R_curr.detach().numpy().squeeze())
-            # print("Reward: ", R_curr.detach().numpy().squeeze())
-            # print("Bottleneck grads: ", bottleneck_grads)
+            print("Reward: ", R_curr.detach().numpy().squeeze())
+            print("Bottleneck grads: ", bottleneck_grads)
             plt.imshow(bottleneck_grads)
             plt.title(str(bottleneck_grads))
             R_model.step()

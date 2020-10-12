@@ -1,6 +1,9 @@
 import numpy as np
 import os, os.path as osp
 import pandas as pd
+import seaborn as sns
+from .geospatial_utils import df_crop_trips
+from mapsplotlib import mapsplot as mplt
 
 
 def find_dirs_with_labels(dataset_dir):
@@ -82,18 +85,19 @@ class GeoLifeDataset:
             Store the datatframe in HDF store to speed up subsequent retrievals.
         """
         self.dataset_dir = dir
-        store = pd.HDFStore(osp.join(dir, parsed_hdf5_file))
+        data_store_dir = osp.join(dir, parsed_hdf5_file)
+        store = pd.HDFStore(data_store_dir)
         if parsed_hdf5_name in store.keys():
-            print("Loading from existing store...")
-            self.data = store[parsed_hdf5_name]
+            print("Loading from HDFS store: {}: {}".format(data_store_dir, parsed_hdf5_name))
+            data = store[parsed_hdf5_name]
         else:
-            print("Parsing dataset...")
+            print("Creating HDFS store from data: {}".format(dir))
             dirs_with_labels = find_dirs_with_labels(dir)
-            self.data = get_dataframe_grouped_by_user(
+            data = get_dataframe_grouped_by_user(
                 dirs_with_labels, process_labels)
-            self.store[parsed_hdf5_name] = self.data
+            store[parsed_hdf5_name] = data
         store.close()
-        self.data = self.__cleanup_data_frame(self.data)
+        self.update_data_cache(self.__cleanup_data_frame(data))
 
     def __cleanup_data_frame(self, df):
         df = df.fillna({"transport_mode": "N/A"})
@@ -109,3 +113,61 @@ class GeoLifeDataset:
         """
         df.drop_duplicates(subset=["date_time"], keep="last", inplace=True)
         return df
+
+    def get_user_ids(self):
+        return np.unique(self.data.user_id)
+
+    def get_trip_ids(self):
+        return np.unique(self.data.trip_id)
+
+    def get_transport_modes(self):
+        return np.unique(self.data.transport_mode)
+
+    def select_user_ids(self, user_id_list, update_data_cache=False):
+        df = self.data[self.data["user_id"].isin(user_id_list)]
+        if update_data_cache:
+            self.update_data_cache(df)
+        return df
+
+    def select_transport_modes(self, transport_mode_list, update_data_cache=False):
+        df = self.data[self.data["transport_mode"].isin(transport_mode_list)]
+        if update_data_cache:
+            self.update_data_cache(df)
+        return df
+
+    def crop_by_lat_lng(self, lat=39.9059631, lng=116.391248,
+                        lat_span_miles=10, lng_span_miles=10,
+                        update_data_cache=False):
+        cropped_df, boundary_coords = df_crop_trips(self.data, lat, lng,
+                                  lat_span_miles=lat_span_miles,
+                                  lng_span_miles=lng_span_miles)
+        if update_data_cache:
+            self.update_data_cache(cropped_df)
+        return cropped_df, boundary_coords
+
+    def update_data_cache(self, new_df):
+        print("Updating data cache...")
+        self.data = new_df
+        self.lat_min = self.data.latitude.min()
+        self.lat_max = self.data.latitude.max()
+        self.lng_min = self.data.longitude.min()
+        self.lng_max = self.data.longitude.max()
+        # # filter by transport mode
+        # self.tmode_by_user = pd.DataFrame(
+        #     self.data.groupby("user_id")["transport_mode"].value_counts())
+        # self.tmode_by_user.columns = ["counts"]
+        # self.tmode_by_user.reset_index(inplace=True)
+        # self.tmode_by_user_pivot = self.tmode_by_user.pivot(
+        #     index="user_id", columns="transport_mode", values="counts")
+
+    def plot_scatter(self, title="", kind="hex", height=10, **kwargs):
+        g = sns.jointplot(data=self.data, x="longitude", y="latitude", kind=kind, height=height, **kwargs)
+        g.fig.suptitle(title + "\nlat: [{:.4f}, {:.4f}], lng: [{:.4f}, {:.4f}]".format(
+            self.lat_min, self.lat_max, self.lng_min, self.lng_max))
+        return g
+
+    def update_gmap_api_key(self, api_key):
+        mplt.register_api_key(api_key)
+
+    def plot_gmap_density(self, latitude_list, longitude_list, **kwargs):
+        mplt.density_plot(latitude_list, longitude_list, **kwargs)

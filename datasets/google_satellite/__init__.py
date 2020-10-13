@@ -1,1 +1,1 @@
-from . import plo
+from . import static_map

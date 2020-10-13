@@ -1,5 +1,3 @@
-import sys
-from . import plotting_wrapper as Plotting
 from . import PriorityQueue as PriorityQueue
 
 import os
@@ -7,15 +5,14 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 from pandas import HDFStore
-from collections import defaultdict
 
 # Google Maps
-from . import google_maps_wrapper as MapsGoogle
+from datasets.google_satellite import static_map as MapsGoogle
 # Utils/
 from . import geospatial_utils as GSUtil
 
 import seaborn as sns
-import matplotlib.pyplot as plt
+
 
 def resample(series, resample_rate):
     """Resample Pandas series at @resample_rate."""

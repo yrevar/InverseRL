@@ -17,6 +17,8 @@ class MapAnnotator(object):
         self.launch_interface()
 
     def _initialize(self, map_fname, window):
+        self.store_dir = osp.dirname(map_fname)
+        self.store_fname = osp.splitext(osp.basename(map_fname))[0]
         self.map_img = cv2.imread(map_fname)
         self.window = window
         self.path = None
@@ -29,9 +31,17 @@ class MapAnnotator(object):
         self.state_wait_ms = 1  # refresh rate
         self.temp_state_wait_ms = 800  # exit state after delay
         self.help_menu_width = 300
+        self.top_panel_height = 100
         self.relative_line_spacing = 1.5
+        path_list = self.load_trajectories(self.get_trajectory_fname())
+        if path_list is not None:
+            self.path_list = path_list
+            self.path_idx = len(path_list)
         cv2.namedWindow(self.window)
         cv2.setMouseCallback(self.window, self.draw_path)
+
+    def get_pen_color(self):
+        return self.pen_color
 
     def _randomize_pen_color(self):
         self.pen_color = (np.random.randint(0, 256), np.random.randint(0, 256), np.random.randint(0, 256))
@@ -40,17 +50,35 @@ class MapAnnotator(object):
         if event == cv2.EVENT_LBUTTONDOWN:
             self.drawing = True
             self.path = np.array([[x, y]], dtype=np.int32)
-            self.path_list[self.path_idx] = (self.path, self.pen_color)
+            self.path_list[self.path_idx] = (self.path, self.get_pen_color())
 
         elif event == cv2.EVENT_MOUSEMOVE:
             if self.drawing == True:
                 self.path = np.vstack((self.path, [x, y])).astype(np.int32)
-                self.path_list[self.path_idx] = (self.path, self.pen_color)
+                self.path_list[self.path_idx] = (self.path, self.get_pen_color())
 
         elif event == cv2.EVENT_LBUTTONUP:
             self.drawing = False
             self.path_ready = True
             self.path_idx += 1
+
+    def get_trajectory_fname(self):
+        return osp.join(self.store_dir, self.store_fname + "_" + "trajectories.npy")
+
+    def load_trajectories(self, fname):
+        if osp.exists(fname):
+            paths = np.load(fname, allow_pickle=True)
+            path_list = {}
+            for idx, path in enumerate(paths):
+                self._randomize_pen_color()
+                path_list[idx] = (path, self.get_pen_color())
+            return path_list
+        else:
+            return None
+
+    def get_menu_info(self):
+        return "Trajectories: {}\n" \
+               "".format(self.path_idx)
 
     def render(self, window, img, wait_ms=0):
         cv2.imshow(window, img)
@@ -66,22 +94,21 @@ class MapAnnotator(object):
         if len(self.path_list) != 0:
             for k, v in self.path_list.items():
                 path, pen_color = v
-                img = cv2.polylines(img, np.int32([path]), False, pen_color, self.pen_thickness)
+                img = cv2.polylines(img, [path], False, pen_color, self.pen_thickness)
         return img
 
     def render_help_menu(self, img):
-
         start_x, start_y = 10, 20
         menu_img = np.ones((img.shape[0], self.help_menu_width, img.shape[2]), dtype=img.dtype) * np.array([[[150, 150, 150]]], dtype=img.dtype)
         # show pen color
-        cv2.rectangle(menu_img, (start_x, start_y), (start_x + 50, start_y + 50), self.pen_color, -1)
+        self.putMsg(menu_img, "Pen Color: ",  (start_x, start_y + 40),
+                    h_align="left",
+                    font_face=cv2.FONT_HERSHEY_TRIPLEX,
+                    font_color=(0, 255, 0),
+                    font_scale=0.6)
+
+        cv2.rectangle(menu_img, (start_x + 150, start_y), (start_x + 230, start_y + 80), self.get_pen_color(), -1)
         end_y = start_y + 100
-        # _, end_x, end_y = self.putMsg(
-        #     menu_img, self.get_gltl_info(), (start_x, start_y),
-        #     h_align="left",
-        #     font_face=cv2.FONT_HERSHEY_TRIPLEX,
-        #     font_color=(0, 255, 0),
-        #     font_scale=0.6)
         helptext = "---Help--- \
                         \n'p': change pen color \
                         \n'c': clear last trajectory \
@@ -116,6 +143,20 @@ class MapAnnotator(object):
             overlay[y:y+h, x:x+w, :] = list(color)
             self.putMsg(overlay, msg, (x+w//2, y+h//2), font_scale=0.6, h_align="center", font_color=(0, 0, 255))
             cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+        return img
+
+    def render_top_panel(self, img):
+        h, w, c = img.shape
+        top_panel =  np.ones((self.top_panel_height, w, c), dtype=img.dtype) * np.array([[[100, 100, 100]]], dtype=img.dtype)
+
+        top_panel, end_x, end_y = self.putMsg(
+            top_panel, self.get_menu_info(), (int((w-self.help_menu_width) * 0.5), int(self.top_panel_height * 0.5)),
+            h_align="left",
+            font_face=cv2.FONT_HERSHEY_TRIPLEX,
+            font_color=(0, 255, 0),
+            font_scale=1)
+
+        img = np.vstack((top_panel, img))
         return img
 
     def putMsg(self, img, msg, position, font_face=cv2.FONT_HERSHEY_TRIPLEX,
@@ -173,6 +214,7 @@ class MapAnnotator(object):
             [
                 lambda img: self.render_paths(img),
                 lambda img: self.render_help_menu(img),
+                lambda img: self.render_top_panel(img),
                 lambda img: self.render_update_overlay(img, msg=msg)
             ]
         )
@@ -187,21 +229,34 @@ class MapAnnotator(object):
         return self.display_current_state(*args, **kwargs)
 
     def launch_interface(self, debug=True):
-
         while True:
             render_img, event = self.display_current_state(self.window)
             if event != 255 and debug:
                 print('Key pressed %d (0x%x), LSB: %d (%s)' % (
                     event, event, event % 256, repr(chr(event % 256)) if event % 256 < 128 else '?'))
             if event == ord('p'):
+                if debug: print("getting new pen color...")
                 self._randomize_pen_color()
             if event == ord('c'):
-                del self.path_list[self.path_idx-1]
-                self.path_idx = self.path_idx-1
+                if debug: print("clearing last trajectory...")
+                if self.path_idx-1 in self.path_list:
+                    del self.path_list[self.path_idx-1]
+                    self.path_idx = self.path_idx-1
             if event == ord('x'):
+                if debug: print("clearing trajectories...")
                 del self.path_list
                 self.path_list = {}
                 self.path_idx = 0
+                _ = self.display_temp_state(self.window, msg="Cleared all trajectories at", override_wait_ms=800)
+            if event == ord('s'):
+                if debug: print("saving trajectories...")
+                paths = []
+                for k, v in self.path_list.items():
+                    # print(v[0].shape)
+                    paths.append(v[0])
+                np.save(self.get_trajectory_fname(), np.asarray(paths))
+                _ = self.display_temp_state(self.window, msg="Saved {} trajectories at\n{}".format(
+                    len(paths), self.get_trajectory_fname()), override_wait_ms=800)
             elif event == 27 or event in [ord('q'), ord('Q')]:
                 if debug: print("Exiting...")
                 _ = self.display_temp_state(

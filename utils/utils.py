@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from IPython import display
 from collections import defaultdict, Counter
+import cv2
 
 import matplotlib.pyplot as plt
 
@@ -168,3 +169,9 @@ def plot_3d_surface(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm
     ax.set_zlim(0, 1.)
     ax.view_init(elev=elev, azim=azim)
     fig.colorbar(surf, shrink=0.5, aspect=5)
+
+def read_image(fname, resize_shape=None):
+    if resize_shape is None:
+        return cv2.imread(fname)[:,:,::-1]
+    else:
+        return cv2.resize(cv2.imread(fname)[:,:,::-1], resize_shape)

@@ -11,11 +11,15 @@ class MapDownloader:
 
     def download(self):
         location_spec_file = osp.join(self.store_dir, self.location_spec_fname)
+        lat_lst, lng_lst = [], []
         with open(location_spec_file) as f:
             for line in f.readlines():
                 lat, lng = line.strip().split(", ")
                 lat, lng = float(lat), float(lng)
-                self.gmap.store(lat, lng, self.store_dir, storage_format=self.storage_format)
+                lat_lst.append(lat)
+                lng_lst.append(lng)
+        self.gmap.store_many(lat_lst, lng_lst, self.store_dir, fname_format="prefix_index", prefix="map",
+                        storage_format=self.storage_format)
 
 @click.command()
 @click.option('-i', '--store-dir',  required=True, type=str, help="Directory with lat_lng_list.txt.")
@@ -23,6 +27,7 @@ class MapDownloader:
               type=str, help="Directory with google maps API key.")
 @click.option('-z', '--zoom', default=10, required=False, type=int, help='Zoom level.')
 @click.option('-s', '--size', default="640x640", required=False, type=str, help='Image size.')
+# @click.option('-f', '--file-name-format', default="prefix_index", required=False, type=str, help='Image size.')
 @click.option('-t', '--map-type', default="satellite", required=False, type=str,
               help='Map type (roadmap, satellite, terrain, or hybrid).')
 @click.option('-m', '--mode', default="RGB", required=False, type=str,

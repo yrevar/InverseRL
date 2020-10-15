@@ -49,6 +49,7 @@ class MapAnnotator(object):
         self.pen_color = (np.random.randint(0, 256), np.random.randint(0, 256), np.random.randint(0, 256))
 
     def mouse_handler(self, event, x, y, flags, param):
+        y -= self.top_panel_height
         if event == cv2.EVENT_LBUTTONDOWN:
             self.drawing = True
             self.path = np.array([[x, y]], dtype=np.int32)
@@ -79,6 +80,8 @@ class MapAnnotator(object):
             return None
 
     def get_menu_info(self):
+        # print("".join(["({}, {})".format(*p) for p in utils.compact_paths(
+            # [self.path_list[self.path_idx - 1]])]))
         return "Trajectories: {}\n" \
                "".format(self.path_idx)
 
@@ -104,17 +107,27 @@ class MapAnnotator(object):
         return img
 
     def render_help_menu(self, img):
-        start_x, start_y = 10, 20
+        start_x, start_y = 10, 40
         menu_img = np.ones((img.shape[0], self.help_menu_width, img.shape[2]), dtype=img.dtype) * np.array([[[150, 150, 150]]], dtype=img.dtype)
+        start_y = start_y
         # show pen color
-        self.putMsg(menu_img, "Pen Color: ",  (start_x, start_y + 40),
-                    h_align="left",
-                    font_face=cv2.FONT_HERSHEY_TRIPLEX,
-                    font_color=(0, 255, 0),
-                    font_scale=self.help_menu_fontscale)
+        _, _, _ = self.putMsg(
+            menu_img, "Pen Color: ",  (start_x, start_y),
+            h_align="left", font_face=cv2.FONT_HERSHEY_TRIPLEX,
+            font_color=(0, 255, 0),
+            font_scale=self.help_menu_fontscale)
 
-        cv2.rectangle(menu_img, (start_x + 170, start_y), (start_x + 250, start_y + 80), self.get_pen_color(), -1)
-        end_y = start_y + 100
+        cv2.rectangle(menu_img, (start_x + 170, start_y - 40), (start_x + 250, start_y + 40), self.get_pen_color(), -1)
+        start_y = start_y + 60
+
+        _, _, start_y = self.putMsg(
+            menu_img, "Pen Size: {}".format(self.pen_thickness), (start_x, start_y),
+            h_align="left", font_face=cv2.FONT_HERSHEY_TRIPLEX,
+            font_color=(0, 255, 0),
+            font_scale=self.help_menu_fontscale)
+
+        start_y = start_y + 80
+
         helptext = "---Help--- \
                         \n'p': change pen color \
                         \n'<num>': pen thickness \
@@ -123,7 +136,7 @@ class MapAnnotator(object):
                         \n's': save trajectories \
                         \n'ESC': Exit"
         _ = self.putMsg(
-            menu_img, helptext, (start_x, end_y),
+            menu_img, helptext, (start_x, start_y),
             h_align="left",
             font_face=cv2.FONT_HERSHEY_TRIPLEX,
             font_color=(0, 255, 0),
@@ -217,9 +230,9 @@ class MapAnnotator(object):
         render_img = self.build_render_frame(
             self.map_img,
             [
+                lambda img: self.render_paths(img),
                 lambda img: self.render_help_menu(img),
                 lambda img: self.render_top_panel(img),
-                lambda img: self.render_paths(img),
                 lambda img: self.render_update_overlay(img, msg=msg),
             ]
         )
@@ -242,7 +255,7 @@ class MapAnnotator(object):
 
             if ord("0") <= event <= ord("9"):
                 label = event - ord("0")
-                self.pen_thickness = 3 + 2 * label
+                self.pen_thickness = max(3 + 2 * label, 3)
             elif event == ord('p'):
                 if debug: print("getting new pen color...")
                 self._randomize_pen_color()

@@ -1,6 +1,8 @@
+from abc import ABC, abstractmethod
 import os, numpy as np, os.path as osp
 import torch, torch.nn as nn, torch.nn.functional as F, torch.optim as optim
 from matplotlib import pyplot as plt
+
 
 class PyTorchNNModuleAug(nn.Module):
     """
@@ -10,7 +12,7 @@ class PyTorchNNModuleAug(nn.Module):
         super().__init__()
         self.input_shape = input_shape
         if (isinstance(input_shape, list) or isinstance(input_shape, tuple)) and len(input_shape) == 3:
-            self.in_channels = self.input_shape[0]
+            self.in_channels = self.input_shape[2]
         else:
             self.in_channels = None
         self.lr = lr
@@ -23,6 +25,15 @@ class PyTorchNNModuleAug(nn.Module):
 
     def in_channels(self):
         return self.in_channels
+
+    @staticmethod
+    @abstractmethod
+    def prepare_input(x):
+        if len(x.shape) == 3:
+            x = torch.FloatTensor(x).unsqueeze(0).permute(0, 3, 1, 2)
+        else:
+            x = torch.FloatTensor(x).permute(0, 3, 1, 2)
+        return x
 
     def set_optimizer(self, parameters=None):
         parameters = parameters or self.parameters()
@@ -44,7 +55,8 @@ class PyTorchNNModuleAug(nn.Module):
     def load(self, path):
         self.load_state_dict(torch.load(path))
 
-class Encoder(PyTorchNNModuleAug):
+
+class Encoder(ABC, PyTorchNNModuleAug):
     """
     Abstract Class for Encoder.
     """
@@ -55,17 +67,19 @@ class Encoder(PyTorchNNModuleAug):
         self.setup_encoder_layers()
         self.set_optimizer()
 
+    @abstractmethod
     def setup_encoder_layers(self):
-        raise NotImplementedError
+        return
 
+    @abstractmethod
     def encode(self, x):
-        raise NotImplementedError
+        return
 
     def forward(self, x):
         return self.encode(x)
 
 
-class Decoder(PyTorchNNModuleAug):
+class Decoder(ABC, PyTorchNNModuleAug):
     """
     Abstract Class for Decoder.
     """
@@ -76,11 +90,13 @@ class Decoder(PyTorchNNModuleAug):
         self.setup_decoder_layers()
         self.set_optimizer()
 
+    @abstractmethod
     def setup_decoder_layers(self):
-        raise NotImplementedError
+        return
 
+    @abstractmethod
     def decode(self, x_enc):
-        raise NotImplementedError
+        return
 
     def forward(self, x_enc):
         return self.decode(x_enc)
@@ -219,10 +235,22 @@ class ConvFCAutoEncoder(AutoEncoder):
         self.t_conv1 = nn.ConvTranspose2d(c1, cin, (3, 3), stride=1, padding=1)
         self.unpool = nn.MaxUnpool2d(2, 2, 0)
 
+    def set_reward_activation(self, type="relu"):
+        self.reward_activation_type = type
+        assert type in ["relu", "sigmoid", "log_sigmoid"]
+        if type == "relu":
+            self.reward_activation = self.relu
+        elif type == "sigmoid":
+            self.reward_activation = self.sigmoid
+        else:
+            self.reward_activation = self.log_sigmoid
+
     def encode(self, x, debug=False, ret_pool_idxs=False, ret_fc_shape_only=False):
         debug = True if self.debug else debug
         pool_idxs = []
-
+        
+        # prepare input
+        x = self.prepare_input(x)
         if debug: print("Encoding Input: ", x.shape)
         # Conv1-pool1
         x = torch.relu(self.conv1(x))
@@ -293,16 +321,6 @@ class ConvFCAutoEncoder(AutoEncoder):
         if debug: print("\tSigmoid + Un-Conv1: ", x.shape)
         return x
 
-    def set_reward_activation(self, type="relu"):
-        self.reward_activation_type = type
-        assert type in ["relu", "sigmoid", "log_sigmoid"]
-        if type == "relu":
-            self.reward_activation = self.relu
-        elif type == "sigmoid":
-            self.reward_activation = self.sigmoid
-        else:
-            self.reward_activation = self.log_sigmoid
-
     def reward(self, x, return_latent=False, debug=False):
         z = self.encode(x, debug=debug)
         r = self.fc_reward(z)
@@ -357,6 +375,7 @@ class ConvAutoEncoder(AutoEncoder):
 
     def encode(self, x, debug=False):
         debug = True if self.debug else debug
+        x = self.prepare_input(x)
         if debug: print(x.shape)
         x = torch.relu(self.conv1(x))
         if debug: print(x.shape)
@@ -401,7 +420,7 @@ class RewardLinear(Encoder):
     """
     def __init__(self, input_shape, lr=0.1, weight_decay=0, debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
-        self.sigmoid = nn.Sigmoid()
+        self.reward_activation_type = "sigmoid"
         self.initialize()
 
     def init_const(self, value=1.):
@@ -419,18 +438,39 @@ class RewardLinear(Encoder):
         else:
             raise Exception("Can't handle input_shape {}!".format(self.in_shape()))
         self.fc_reward = nn.Linear(phi_dim, 1, bias=False)
+        self.sigmoid = nn.Sigmoid()
+        self.reward_activation = self.sigmoid
+
+    def set_reward_activation(self, type="relu"):
+        self.reward_activation_type = type
+        assert type in ["relu", "sigmoid", "log_sigmoid"]
+        if type == "relu":
+            self.reward_activation = self.relu
+        elif type == "sigmoid":
+            self.reward_activation = self.sigmoid
+        else:
+            self.reward_activation = self.log_sigmoid
+
+    @staticmethod
+    def prepare_input(x):
+        x = torch.FloatTensor(x)
+        return x
 
     def encode(self, x, debug=False):
+        x = self.prepare_input(x)
         return x
 
     def reward(self, x, return_latent=False, debug=False):
         z = self.encode(x, debug=debug)
         r = self.fc_reward(z)
-        pr = -self.sigmoid(r)
-        if return_latent:
-            return pr, z
+        if self.reward_activation_type in ["relu", "sigmoid"]:
+            r = -self.reward_activation(r)
         else:
-            return pr
+            r = self.reward_activation(r)
+        if return_latent:
+            return r, z
+        else:
+            return r
 
     def __call__(self, *args, **kwargs):
         return self.reward(*args, **kwargs)
@@ -486,7 +526,13 @@ class LinearUnit(nn.Module):
             raise Exception("Optimizer is not setup!")
         self.optimizer.step()
 
+    @staticmethod
+    def prepare_input(x):
+        x = torch.FloatTensor(x)
+        return x
+
     def forward(self, x, debug=False):
+        x = self.prepare_input(x)
         y = self.fc(x)
         return y
 

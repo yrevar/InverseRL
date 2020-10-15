@@ -9,14 +9,77 @@ import cv2
 
 import matplotlib.pyplot as plt
 
+
+def plot_trajctory(traj, **kwargs):
+    traj = np.asarray(traj)
+    plt.plot(traj[:, 0], traj[:, 1], **kwargs)
+
+
+def plot_img_with_trajectories(img, trajectories, im_kwargs={}, traj_kwargs={}):
+    h, w, c = img.shape
+    plt.imshow(img, **im_kwargs)
+    for traj in trajectories:
+        plot_trajctory(traj, **traj_kwargs)
+    plt.xlim([0, w])
+    plt.ylim([0, h])
+    plt.gca().invert_yaxis()
+
+
+def plot_img_with_trajectory(img, traj, im_kwargs={}, traj_kwargs={}):
+    h, w, c = img.shape
+    plt.imshow(img, **im_kwargs)
+    plot_trajctory(traj, **traj_kwargs)
+    plt.xlim([0, w])
+    plt.ylim([0, h])
+    plt.gca().invert_yaxis()
+
+
+def convert_to_4_actions_path(path):
+    x_, y_ = None, None
+    new_path = []
+    for x, y in path:
+        if x_ is None and y_ is None:
+            new_path.append([x, y])
+        elif x_ != x and y_ != x:
+            new_path.append([x, y_])
+            new_path.append([x, y])
+        else:
+            new_path.append([x, y])
+        x_, y_ = x, y
+    return new_path
+
+
+def compact_paths(paths, restrict_4_actions=False):
+    """
+    Removes None action. Set restrict_4_actions to True to remove other than cardinal directions.
+    :param paths:
+    :param restrict_4_actions:
+    :return:
+    """
+    new_paths = []
+    for path in paths:
+        if restrict_4_actions:
+            path = convert_to_4_actions_path(path)
+        new_path = []
+        s_old = None
+        for s in path:
+            if s_old is None or np.any(s != s_old):
+                new_path.append(tuple(s))
+                s_old = s
+        new_paths.append(new_path)
+    return new_paths
+
+
 def normalize(np_array):
     normed = (np_array - np_array.min()) / (np_array.max() - np_array.min())
     normed = np.minimum(normed, 1)
     normed = np.maximum(normed, 0)
     return normed
 
+
 def compute_epoch(batch_idx, batch_size, data_size):
     return int(np.floor(batch_idx * batch_size/ data_size))
+
 
 def get_lab_freq(labels, label_to_str=None, precision=4):
 
@@ -30,6 +93,7 @@ def get_lab_freq(labels, label_to_str=None, precision=4):
         else:
             return {k: round(v/s, precision) for k, v in l_cnts.items()}
 
+
 def calc_time_delta(func):
     def inner(*args, **kwargs):
         begin = time.time()
@@ -38,10 +102,12 @@ def calc_time_delta(func):
         return end - begin
     return inner
 
+
 def one_hot(i, n):
     v = np.zeros(n)
     v[i] = 1.
     return v
+
 
 def one_hot_nd(nd_int_array, N=None):
 
@@ -53,9 +119,11 @@ def one_hot_nd(nd_int_array, N=None):
         oh_mat.append(one_hot(x, N))
     return np.asarray(oh_mat).reshape(nd_int_array.shape + (N,))
 
+
 def sample_image(X, y, y_q):
     x_q = X[y == y_q]
     return x_q[np.random.randint(0, len(x_q))]
+
 
 def shuffle_in_sync(X, *vars, deep_copy=False):
     rand_idxs = np.random.choice(len(X), len(X), replace=False)
@@ -63,6 +131,7 @@ def shuffle_in_sync(X, *vars, deep_copy=False):
         return X[rand_idxs].copy(), (*[var[rand_idxs].copy() for var in vars])
     else:
         return rand_idxs, X[rand_idxs], (*[var[rand_idxs] for var in vars])
+
 
 def image_stack_to_sprite_image(image_stack, img_dim, nrow=None, padding=0):
     """
@@ -103,6 +172,7 @@ def read_pil_image_from_plt():
     buf.seek(0)
     return Image.open(buf)
 
+
 class GifMaker:
     def __init__(self, fname=None, fps=10, live_view=False, mode="I"):
         self.live_view = live_view
@@ -141,6 +211,7 @@ class GifMaker:
         if self.live_view:
             plt.clf()
 
+
 def get_xyz(img_2d):
     x_list, y_list, z_list = [], [], []
     for row in range(len(img_2d)):
@@ -150,6 +221,7 @@ def get_xyz(img_2d):
             y_list.append(y)
             z_list.append(img_2d[row, col])
     return x_list, y_list, z_list
+
 
 def plot_3d_barplot(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm.jet):
     X, Y, Z = get_xyz(img_2d)
@@ -162,6 +234,7 @@ def plot_3d_barplot(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm
     ax.view_init(elev=elev, azim=azim)
     fig.colorbar(surf, shrink=0.5, aspect=5)
 
+
 def plot_3d_surface(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm.jet):
     X, Y, Z = get_xyz(img_2d)
     ax = fig.gca(projection='3d')
@@ -170,8 +243,9 @@ def plot_3d_surface(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm
     ax.view_init(elev=elev, azim=azim)
     fig.colorbar(surf, shrink=0.5, aspect=5)
 
+
 def read_image(fname, resize_shape=None):
     if resize_shape is None:
-        return cv2.imread(fname)[:,:,::-1]
+        return cv2.imread(fname)[:,:,::-1].copy()
     else:
-        return cv2.resize(cv2.imread(fname)[:,:,::-1], resize_shape)
+        return cv2.resize(cv2.imread(fname)[:,:,::-1].copy(), resize_shape)

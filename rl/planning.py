@@ -55,7 +55,7 @@ class ValueIteration:
         self.Q = torch.zeros(self.nS, self.nA, dtype=torch.float32)
         self.Pi = torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA
         if self.goal is not None and self.goal.is_terminal() is False:
-            print("Setting goal as terminal state!")
+            if self.verbose: print("Setting goal as terminal state!")
             self.goal.set_terminal_status(True)
             self.V[self.s_to_idx[self.goal]] = torch.tensor(0)
         # if self.log_pi:
@@ -110,6 +110,7 @@ class ValueIteration:
 
     def run(self, max_iters, policy, eps=1e-3, reasoning_iters=10, verbose=False, debug=False, ret_vals=False):
         assert 0 <= reasoning_iters <= max_iters
+        converged = False
         if verbose: print("Learning values [ ", end="", flush=True)
         while self.iterno < max_iters - reasoning_iters:
             if verbose and (self.iterno % 30 == 0 or self.iterno == max_iters - reasoning_iters-1):
@@ -119,8 +120,10 @@ class ValueIteration:
                 break
         if self.iterno == max_iters - reasoning_iters:
             if verbose: print(" ] Stopped @ {}.".format(self.iterno))
+            converged = False
         else:
             if verbose: print(" ] Converged @ {}.".format(self.iterno))
+            converged = True
 
         if verbose: print("Reasoning [ ", end="", flush=True)
         stopped_at = self.iterno
@@ -135,7 +138,7 @@ class ValueIteration:
         if verbose: print(" ] Done ({} iters).".format(reasoning_iters))
         self.start_reasoning = False
         if ret_vals:
-            return self.Pi, self.V, self.Q, self.iterno, v_delta_max
+            return self.Pi, self.V, self.Q, self.iterno, v_delta_max, converged
         else:
             return
 

@@ -275,7 +275,8 @@ class MapAnnotator(object):
                 paths = []
                 for k, v in self.path_list.items():
                     # print(v[0].shape)
-                    paths.append(v[0])
+                    path, _ = v
+                    paths.append([[p[1], p[0]]for p in path])
                 np.save(self.get_trajectory_fname(), np.asarray(paths))
                 _ = self.display_temp_state(self.window, msg="Saved {} trajectories at\n{}".format(
                     len(paths), self.get_trajectory_fname()), override_wait_ms=800)

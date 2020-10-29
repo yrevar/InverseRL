@@ -74,7 +74,7 @@ class MapAnnotator(object):
             path_list = {}
             for idx, path in enumerate(paths):
                 self._randomize_pen_color()
-                path_list[idx] = (path, self.get_pen_color())
+                path_list[idx] = (np.array([[p[1], p[0]] for p in path], dtype=np.int32), self.get_pen_color())
             return path_list
         else:
             return None

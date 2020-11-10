@@ -1,79 +1,170 @@
-Package            Version  
------------------- ---------
-appnope            0.1.0    
-attrs              19.2.0   
-backcall           0.1.0    
-bleach             3.1.0    
-certifi            2019.6.16
-chardet            3.0.4    
-cycler             0.10.0   
-decorator          4.4.0    
-defusedxml         0.6.0    
-docutils           0.15.2   
-entrypoints        0.3      
-idna               2.8      
-importlib-metadata 0.23     
-ipykernel          5.1.2    
-ipython            7.7.0    
-ipython-genutils   0.2.0    
-ipywidgets         7.5.1    
-jedi               0.15.1   
-Jinja2             2.10.3   
-jsonschema         3.1.1    
-jupyter-client     5.3.1    
-jupyter-core       4.5.0    
-kiwisolver         1.1.0    
-MarkupSafe         1.1.1    
-matplotlib         3.1.0    
-mistune            0.8.4    
-mkl-fft            1.0.14   
-mkl-random         1.0.2    
-mkl-service        2.0.2    
-more-itertools     7.2.0    
-navigation-mdp     0.2      
-navigation-vis     0.5      
-nbconvert          5.6.0    
-nbformat           4.4.0    
-notebook           6.0.1    
-numpy              1.16.4
-pandas             1.0.3   
-pandocfilters      1.4.2    
-parso              0.5.1    
-pexpect            4.7.0    
-pickleshare        0.7.5    
-Pillow             6.1.0    
-pip                19.2.2   
-pkginfo            1.5.0.1  
-prometheus-client  0.7.1    
-prompt-toolkit     2.0.9    
-ptyprocess         0.6.0    
-pygame             1.9.6    
-Pygments           2.4.2    
-pyparsing          2.4.2    
-pyrsistent         0.15.4   
-python-dateutil    2.8.0    
-pytz               2019.2   
-pyzmq              18.1.0   
-readme-renderer    24.0     
-requests           2.22.0   
-requests-toolbelt  0.9.1    
-scipy              1.3.1    
-Send2Trash         1.5.0    
-setuptools         41.4.0   
-simple-rl          0.811    
-six                1.12.0   
-terminado          0.8.2    
-testpath           0.4.2    
-torch              1.2.0    
-torchvision        0.4.0    
-tornado            6.0.3    
-tqdm               4.36.1   
-traitlets          4.3.2    
-twine              2.0.0    
-universities       1.0.1    
-urllib3            1.25.6   
-wcwidth            0.1.7    
-webencodings       0.5.1    
-wheel              0.33.6   
-widgetsnbextension 3.5.1    
-zipp               0.6.0    
+absl-py==0.9.0
+alabaster==0.7.12
+appnope==0.1.0
+astor==0.8.0
+astunparse==1.6.3
+attrs==19.2.0
+Babel==2.8.0
+backcall==0.1.0
+bleach==3.1.0
+bokeh @ file:///opt/concourse/worker/volumes/live/5da86089-bcce-44bf-4aed-5a13429919e6/volume/bokeh_1599056194428/work
+cached-property==1.5.1
+cachetools==3.1.1
+certifi==2020.6.20
+chainer==7.4.0
+chainerrl==0.8.0
+chardet==3.0.4
+Click==7.0
+cloudpickle==1.3.0
+colorama==0.4.3
+coloredlogs==14.0
+cycler==0.10.0
+decorator==4.4.0
+defusedxml==0.6.0
+dill==0.3.2
+dm-tree==0.1.5
+docutils==0.15.2
+entrypoints==0.3
+filelock==3.0.12
+future==0.18.2
+gast==0.3.3
+geographiclib==1.50
+geopy==2.0.0
+getch==1.0
+google-api-python-client==1.7.11
+google-auth==1.9.0
+google-auth-httplib2==0.0.3
+google-auth-oauthlib==0.4.1
+Google-Images-Search==1.0.1
+google-pasta==0.2.0
+grpcio==1.33.1
+gym==0.17.1
+h5py==2.10.0
+httplib2==0.14.0
+humanfriendly==8.1
+idna==2.8
+imageio==2.8.0
+imagesize==1.2.0
+importlib-metadata==0.23
+ipykernel==5.1.2
+ipympl==0.5.2
+ipyparallel==6.3.0
+ipython==7.7.0
+ipython-genutils==0.2.0
+ipywidgets==7.5.1
+jedi==0.15.1
+Jinja2==2.11.2
+joblib==0.14.1
+jsonschema==3.1.1
+jupyter-client==5.3.1
+jupyter-core==4.5.0
+Keras==2.3.1
+Keras-Applications==1.0.8
+Keras-Preprocessing==1.1.2
+kiwisolver==1.1.0
+lxml==4.5.0
+mapsplotlib==1.2.1
+Markdown==3.1.1
+MarkupSafe==1.1.1
+matplotlib==3.1.2
+mistune==0.8.4
+mkl-fft==1.0.14
+mkl-random==1.0.2
+mkl-service==2.0.2
+more-itertools==7.2.0
+navigation-mdp==0.8
+navigation-vis==0.8
+nbconvert==5.6.0
+nbformat==4.4.0
+networkx==2.4
+nltk==3.4.5
+nose==1.3.7
+notebook==6.0.1
+numexpr==2.7.1
+numpy==1.18.5
+oauthlib==3.1.0
+olefile==0.46
+opencv-python-headless==4.4.0.42
+opt-einsum==3.3.0
+packaging==20.4
+pandas==1.0.3
+pandocfilters==1.4.2
+parso==0.5.1
+pexpect==4.7.0
+pickleshare==0.7.5
+Pillow==7.1.2
+pkginfo==1.5.0.1
+-e git+https://github.com/ntasfi/PyGame-Learning-Environment@3dbe79dc0c35559bb441b9359948aabf9bb3d331#egg=ple
+plotly==4.9.0
+prometheus-client==0.7.1
+prompt-toolkit==2.0.9
+protobuf==3.11.4
+psutil==5.7.0
+ptyprocess==0.6.0
+pyasn1==0.4.8
+pyasn1-modules==0.2.7
+pyfiglet==0.8.post1
+pygame==1.9.6
+pyglet==1.5.0
+Pygments==2.4.2
+pyparsing==2.4.2
+Pyro4==4.79
+pyrsistent==0.15.4
+python-dateutil==2.8.0
+python-resize-image==1.1.19
+pytz==2019.2
+PyYAML==5.3.1
+pyzmq==18.1.0
+qtconsole==4.7.5
+QtPy==1.9.0
+readme-renderer==24.0
+requests==2.22.0
+requests-oauthlib==1.3.0
+requests-toolbelt==0.9.1
+retrying==1.3.3
+rsa==4.0
+scikit-learn==0.22.2.post1
+scipy==1.4.1
+seaborn @ file:///tmp/build/80754af9/seaborn_1600553570093/work
+Send2Trash==1.5.0
+serpent==1.30.2
+simple-rl==0.811
+six==1.12.0
+sklearn==0.0
+snowballstemmer==2.0.0
+Sphinx==3.1.2
+sphinxcontrib-applehelp==1.0.2
+sphinxcontrib-devhelp==1.0.2
+sphinxcontrib-htmlhelp==1.0.3
+sphinxcontrib-jsmath==1.0.1
+sphinxcontrib-qthelp==1.0.3
+sphinxcontrib-serializinghtml==1.1.4
+tables==3.6.1
+tensorboard==2.2.2
+tensorboard-plugin-wit==1.7.0
+tensorflow==2.2.0
+tensorflow-estimator==2.2.0
+tensorflow-probability==0.11.0
+termcolor==1.1.0
+terminado==0.8.2
+testpath==0.4.2
+Theano==1.0.4
+torch==1.2.0
+torchsummary==1.5.1
+torchvision==0.4.0
+tornado==6.0.3
+tqdm==4.49.0
+traitlets==4.3.2
+twine==2.0.0
+typing==3.7.4.1
+typing-extensions @ file:///tmp/build/80754af9/typing_extensions_1598376058250/work
+universities==1.0.1
+uritemplate==3.0.0
+urllib3==1.25.6
+watermark==2.0.2
+wcwidth==0.1.7
+webencodings==0.5.1
+Werkzeug==1.0.0
+widgetsnbextension==3.5.1
+wrapt==1.12.1
+zipp==0.6.0

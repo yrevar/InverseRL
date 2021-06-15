@@ -8,6 +8,58 @@ import navigation_mdp as NvMDP
 # Utils
 import utils.PriorityQueue as PriorityQueue
 
+
+class StateActionArray(object):
+
+    def __init__(self, S, A):
+        self.S = S
+        self.A = A
+        self.s_to_idx = {v: k for k, v in enumerate(S)}
+        self.s_loc_to_idx = {v.get_location(): k for k, v in enumerate(S)}
+        self.a_to_idx = {a: i for i, a in enumerate(A)}
+        self.Pi = torch.zeros(len(S), len(A), dtype=torch.float32)
+
+    def init_uniform(self):
+        self.Pi = torch.ones(len(self.S), len(self.A), dtype=torch.float32) / len(self.A)
+
+    def init_zeros(self):
+        self.Pi = torch.zeros(len(self.S), len(self.A), dtype=torch.float32)
+
+    def __getitem__(self, key):
+        if isinstance(key[0], NvMDP.state.State) and isinstance(key[1], str):
+            return self.Pi[self.s_to_idx[key[0]], self.a_to_idx[key[1]]]
+        elif isinstance(key[0], tuple) and isinstance(key[1], str):
+            return self.Pi[self.s_to_idx[self.S.at_loc(key[0])], self.a_to_idx[key[1]]]
+        elif isinstance(key[0], NvMDP.state.State) and isinstance(key[1], slice):
+            return self.Pi[self.s_to_idx[key[0]], key[1]]
+        elif isinstance(key[0], tuple) and isinstance(key[1], slice):
+            return self.Pi[self.s_to_idx[self.S.at_loc(key[0])], key[1]]
+        elif (isinstance(key[0], int) or isinstance(key[0], slice)) and (isinstance(key[1], int) or isinstance(key[1], slice)):
+            return self.Pi[key[0], key[1]]
+        else:
+            raise ValueError("Invalid key!")
+
+    def __setitem__(self, key, value):
+        if isinstance(key[0], NvMDP.state.State) and isinstance(key[1], str):
+            self.Pi[self.s_to_idx[key[0]], self.a_to_idx[key[1]]] = value
+        elif isinstance(key[0], tuple) and isinstance(key[1], str):
+            self.Pi[self.s_to_idx[self.S.at_loc(key[0])], self.a_to_idx[key[1]]] = value
+        elif isinstance(key[0], NvMDP.state.State) and isinstance(key[1], slice):
+            self.Pi[self.s_to_idx[key[0]], key[1]] = value
+        elif isinstance(key[0], tuple) and isinstance(key[1], slice):
+            self.Pi[self.s_to_idx[self.S.at_loc(key[0])], key[1]] = value
+        elif isinstance(key[0], int) and (isinstance(key[1], int) or isinstance(key[1], slice)):
+            self.Pi[key[0], key[1]] = value
+        else:
+            raise ValueError("Invalid key!")
+
+    def data(self):
+        return self.Pi
+
+    def __repr__(self):
+        return str(self.data())
+
+
 class ValueIteration:
 
     def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False, log_pi=False):
@@ -20,44 +72,52 @@ class ValueIteration:
         self.S, self.nS = discrete_state_space, len(discrete_state_space)
         self.A, self.nA = self.T.ACTIONS, len(self.T.ACTIONS)
         self.gamma = gamma
-        if goal is not None:
-            if not isinstance(goal, NvMDP.state.State):
-                self.goal = self.S.at_loc(goal)
-            else:
-                self.goal = goal
-        else:
-            self.goal = None
-
-        self.s_to_idx = {v: k for k, v in enumerate(self.S)}
-        self.a_to_idx = {a: i for i, a in enumerate(self.A)}
+        self.goal = goal
         self.verbose = verbose
         # TODO: Ref: https://github.com/yrevar/InverseRL/blob/master/MLIRL/Differentiable_Value_Iteration_4_Actions.ipynb
         self.start_reasoning = False
         # self.log_pi = log_pi
-        self.check_goal(self.goal)
         self.reset()
 
     def reset(self):
         self.iterno = 0
         self.initialize()
 
-    def check_goal(self, goal):
-        if goal is None:
+    def check_goal(self):
+        # reset terminal status of all states
+        self.S.reset_terminal_status()
+        if self.goal is not None:
+            if not isinstance(self.goal, NvMDP.state.State):
+                self.goal = self.S.at_loc(self.goal)
+        else:
             if self.verbose: print("No specific goals")
+            self.goal = None
             return True
+
+        is_in_state_space = False
         for s in self.S:
-            if s == goal:
-                return True
-        raise Exception("Goal is not in state space!")
+            if s == self.goal:
+                is_in_state_space = True
+        if not is_in_state_space:
+            raise Exception("Goal is not in state space!")
+
+        if self.verbose: print("Setting goal {} as terminal state!".format(self.goal))
+        self.goal.set_terminal_status(True)
+        return True
 
     def initialize(self):
+        self.s_to_idx = {v: k for k, v in enumerate(self.S)}
+        self.a_to_idx = {a: i for i, a in enumerate(self.A)}
         self.V = torch.tensor([r for r in self.R], requires_grad=False)
-        self.Q = torch.zeros(self.nS, self.nA, dtype=torch.float32)
-        self.Pi = torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA
-        if self.goal is not None and self.goal.is_terminal() is False:
-            if self.verbose: print("Setting goal as terminal state!")
-            self.goal.set_terminal_status(True)
+        self.Q = StateActionArray(self.S, self.A)
+        self.Q.init_zeros()
+        self.Pi = StateActionArray(self.S, self.A)
+        self.Pi.init_uniform()
+        self.check_goal()
+        if self.goal is not None:
             self.V[self.s_to_idx[self.goal]] = torch.tensor(0)
+        self.v_delta_max = None
+        self.converged = False
         # if self.log_pi:
         #     self.Pi = torch.log(torch.ones(self.nS, self.nA, dtype=torch.float32) / self.nA)
 
@@ -85,7 +145,7 @@ class ValueIteration:
     def q_value_list(self, s, debug=False):
         return [self.q_value(s, a, debug) for a in self.A]
 
-    def step(self, policy, debug=False, ret_vals=False):
+    def step(self, policy_fn, debug=False, ret_vals=False):
         v_delta_max = 0
         for si, s in enumerate(self.S):
             v_s__old = self.V[si].detach().item()
@@ -95,7 +155,7 @@ class ValueIteration:
             for ai, q in enumerate(self.q_value_list(s, debug=debug)):
                 self.Q[si, ai] = q
             # Softmax action selection
-            self.Pi[si, :] = policy(self.Q[si, :].clone())
+            self.Pi[si, :] = policy_fn(self.Q[si, :].clone())
             # Softmax value
             # if self.log_pi:
             #     self.V[si] = torch.exp(self.Pi[si, :].clone()).dot(self.Q[si, :].clone())
@@ -108,14 +168,14 @@ class ValueIteration:
         else:
             return v_delta_max
 
-    def run(self, max_iters, policy, eps=1e-3, reasoning_iters=10, verbose=False, debug=False, ret_vals=False):
+    def run(self, max_iters, policy_fn, eps=1e-3, reasoning_iters=10, verbose=False, debug=False, ret_vals=False):
         assert 0 <= reasoning_iters <= max_iters
         converged = False
         if verbose: print("Learning values [ ", end="", flush=True)
         while self.iterno < max_iters - reasoning_iters:
             if verbose and (self.iterno % 30 == 0 or self.iterno == max_iters - reasoning_iters-1):
                 print(" {}".format(self.iterno), end="" if self.iterno == 0 or self.iterno % 300 else "\n\t", flush=True)
-            v_delta_max = self.step(policy, debug=debug, ret_vals=False)
+            v_delta_max = self.step(policy_fn, debug=debug, ret_vals=False)
             if v_delta_max <= eps:
                 break
         if self.iterno == max_iters - reasoning_iters:
@@ -132,11 +192,13 @@ class ValueIteration:
         while self.iterno - stopped_at < reasoning_iters:
             if verbose and ((self.iterno-stopped_at) % 30 == 0 or self.iterno - stopped_at == reasoning_iters-1):
                 print(" {}".format(self.iterno), end="" if self.iterno == stopped_at or self.iterno-stopped_at % 300 else "\n\t", flush=True)
-            _ = self.step(policy, debug=debug, ret_vals=False)
+            _ = self.step(policy_fn, debug=debug, ret_vals=False)
             k += 1
 
         if verbose: print(" ] Done ({} iters).".format(reasoning_iters))
         self.start_reasoning = False
+        self.v_delta_max = v_delta_max
+        self.converged = converged
         if ret_vals:
             return self.Pi, self.V, self.Q, self.iterno, v_delta_max, converged
         else:

@@ -2,48 +2,60 @@ from abc import ABC, abstractmethod
 import numpy as np
 import navigation_mdp as nvmdp
 from typing import Any, List, Dict, Union, Optional
+from irl.data import TrajectoryStore
 
 
 class AbstractGridWorldDemonstration(ABC):
 
     def __init__(self):
-        pass
+        return
 
     @abstractmethod
     def get_states(self) -> nvmdp.state.DiscreteStateSpace:
-        pass
+        return
 
+    @abstractmethod
     def get_state_feature(self, s: nvmdp.state.State) -> np.ndarray:
-        pass
+        return
 
     @abstractmethod
     def get_features(self) -> np.ndarray:
-        pass
+        return
 
-    # @abstractmethod
-    # def feature_pre_process(self, x) -> np.ndarray:
-    #     pass
-    #
-    # @abstractmethod
-    # def feature_post_process(self) -> np.ndarray:
-    #     pass
+    @abstractmethod
+    def get_features_grid(self) -> np.ndarray:
+        return
+
+    @abstractmethod
+    def attach_reward_spec(self, reward_spec: nvmdp.reward.AbstractStateRewardSpec):
+        return
+
+    @abstractmethod
+    def get_rewards(self):
+        return
 
     @abstractmethod
     def get_actions(self) -> List:
-        pass
+        return
 
     @abstractmethod
     def get_transition_fn(self) -> nvmdp.dynamics.AbstractDynamics:
-        pass
+        return
 
     @abstractmethod
     def get_next_state(self, s, a) -> nvmdp.state.State:
-        pass
+        return
 
     @abstractmethod
-    def get_trajectories(self) -> List:
-        pass
+    def get_trajectories(self) -> TrajectoryStore:
+        return
 
     @abstractmethod
     def reshape_to_grid(self, values):
-        pass
+        return
+
+    @abstractmethod
+    def plan(self, *args, **kwargs):
+        return
+
+

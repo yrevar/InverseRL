@@ -9,35 +9,9 @@ import rl.planning as Plan
 
 from .AbstractGridWorldDemonstration import AbstractGridWorldDemonstration
 
-import torch
-import torchvision
-import torchvision.transforms as transforms
+class GridWorldDemonstration(AbstractGridWorldDemonstration):
 
-
-def read_mnist_data():
-    # transforms
-    transform = transforms.Compose(
-        [transforms.ToTensor()])
-
-    # datasets
-    trainset = torchvision.datasets.MNIST('../datasets/',
-                                          download=True,
-                                          train=True,
-                                          transform=transform)
-    testset = torchvision.datasets.MNIST('../datasets/',
-                                         download=True,
-                                         train=False,
-                                         transform=transform)
-
-    x_train, y_train = trainset.data.float() / 255., np.asarray(trainset.targets)
-    x_test, y_test = testset.data.float() / 255., np.asarray(testset.targets)
-    return x_train.unsqueeze(-1).numpy(), y_train, x_test.unsqueeze(-1).numpy(), y_test
-
-x_train, y_train, x_test, y_test = read_mnist_data()
-
-class MnistGridWorldDemonstration(AbstractGridWorldDemonstration):
-
-    FEATURE_KEY_IMAGE = "feature_image"
+    FEATURE_KEY_NONLINEAR = "nonlin_feature"
 
     def __init__(self, symbol_layout, symbol_to_class_id_dict, trajectories):
         super().__init__()
@@ -45,15 +19,14 @@ class MnistGridWorldDemonstration(AbstractGridWorldDemonstration):
 
 
     def initialize(self, symbol_layout, symbol_to_class_id_dict, trajectories):
-        self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
         self.class_dist = nvmdp.class_.XYClassDistribution(symbol_layout, symbol_to_class_id_dict)
         self.class_ids = self.class_dist().flatten()
         self.h_cells, self.w_cells = self.class_dist().shape
         self.S = nvmdp.state.DiscreteStateSpace(self.h_cells, self.w_cells)
         self.S.attach_classes(self.class_ids)
-        self.S.attach_feature_spec(
-            nvmdp.features.FeatureClassImageSampler(
-                lambda class_id: utils.sample_image(self.x_train, self.y_train, class_id), key=self.FEATURE_KEY_IMAGE))
+        # self.S.attach_feature_spec(
+        #     nvmdp.features.FeatureClassImageSampler(
+        #         lambda class_id: utils.sample_image(self.x_train, self.y_train, class_id), key=self.FEATURE_KEY_IMAGE))
         self.T = nvmdp.dynamics.XYDynamics(self.S, slip_prob=0.0)
         self.trajectory_store = TrajectoryStore.discrete_compact_4_actions(
             trajectories, None
@@ -71,6 +44,9 @@ class MnistGridWorldDemonstration(AbstractGridWorldDemonstration):
 
     def get_states(self) -> nvmdp.state.DiscreteStateSpace:
         return self.S
+
+    def attach_feature_spec(self, feature_spec):
+        self.S.attach_feature_spec(feature_spec)
 
     def get_features(self, loc=None, idx=None, key=None) -> np.ndarray:
         if self.PHI is None:

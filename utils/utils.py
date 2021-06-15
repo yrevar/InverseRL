@@ -1,18 +1,23 @@
-import time # hurray
-import os.path as osp
+import shutil
+import time
+import os, os.path as osp
 import random, io, imageio
 import numpy as np
 from PIL import Image
 from IPython import display
 from collections import defaultdict, Counter
 import cv2
+import torch
 
 import matplotlib.pyplot as plt
 
 
-def plot_trajctory(traj, **kwargs):
+def plot_trajctory(traj, format="yx", **kwargs):
     traj = np.asarray(traj)
-    plt.plot(traj[:, 0], traj[:, 1], **kwargs)
+    if format == "yx":
+        plt.plot(traj[:, 1], traj[:, 0], **kwargs)
+    else:
+        plt.plot(traj[:, 0], traj[:, 1], **kwargs)
 
 
 def plot_img_with_trajectories(img, trajectories, im_kwargs={}, traj_kwargs={}):
@@ -249,3 +254,44 @@ def read_image(fname, resize_shape=None):
         return cv2.imread(fname)[:,:,::-1].copy()
     else:
         return cv2.resize(cv2.imread(fname)[:,:,::-1].copy(), resize_shape)
+
+
+def user_input(message, choices=("y", "n")):
+    choice = input("%s (%s) " % (message, "/".join(choices)))
+    if choice.strip() in choices:
+        return choice.strip()
+    else:
+        raise ValueError("Invalid input!")
+
+
+def make_clean_dir(dirpath, confirm_deletion=True):
+    if osp.exists(dirpath):
+        if not confirm_deletion or \
+            "y" == user_input(
+                "This will delete {}. Are you sure?".format(osp.abspath(dirpath)), choices=("y", "n")):
+            print("Cleaning...\n\t{}".format(osp.abspath(dirpath)))
+            shutil.rmtree(dirpath)
+        else:
+            print("Not cleaning...")
+            return False
+    os.makedirs(dirpath)
+    return True
+
+
+def log_likelihood(Pi, traj_list, eps=1e-15, ignore_last_action=True):
+    loglik = 0
+    for traj in traj_list:
+        if ignore_last_action:
+            traj = traj[:-1]
+        for s, a in traj:
+            loglik += torch.log(max(torch.tensor(eps), min(torch.tensor(1.) - eps, Pi[s, a])))
+    return loglik
+
+
+def plot_discrete_array(data, rep_axes=[1, 1], cmap_nm="tab20", interpolation="none"):
+    for i, rep in enumerate(rep_axes):
+        data = np.repeat(data, rep, axis=i)
+    cmap = plt.get_cmap(cmap_nm, np.max(data) - np.min(data) + 1)
+    mat = plt.imshow(data, cmap=cmap, interpolation=interpolation,
+                     vmin=np.min(data) - .5, vmax=np.max(data) + .5)
+    cax = plt.colorbar(mat, ticks=np.arange(np.min(data), np.max(data) + 1))

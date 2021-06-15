@@ -1,9 +1,105 @@
-import time, torch, numpy as np
+import time, yaml, torch, numpy as np, os.path as osp
 from collections import defaultdict
 import rl.planning as Plan
 import rl.policy as Policy
+import utils
+# from matplotlib import cm as cm, pyplot as plt, colors as mplotcolors
 
-from matplotlib import cm as cm, pyplot as plt, colors as mplotcolors
+class MLIRL(object):
+
+    def __init__(self, store_dir="./data/mlirl", verbose=False, debug=False):
+        self.store_dir = store_dir
+        self.verbose = verbose
+        self.debug = debug
+        self.state_file = osp.join(store_dir, "mlirl_state.yaml")
+        self.reset()
+
+    def set(self, likelihoods_history, converged_history, bottleneck_grad_history, iter_trained, reward_model_ckpt):
+        self.likelihoods_history = likelihoods_history
+        self.converged_history = converged_history
+        # self.reward_history = []
+        self.bottleneck_grad_history = bottleneck_grad_history
+        self.iter_trained = iter_trained
+        self.reward_model_ckpt = reward_model_ckpt
+
+    def reset(self):
+        # saw weird behavior with mutable argument initialization, hence separate reset() method
+        self.likelihoods_history = []
+        self.converged_history = []
+        # self.reward_history = []
+        self.bottleneck_grad_history = []
+        self.iter_trained = 0
+        self.reward_model_ckpt = None
+
+    def resume(self):
+        if osp.exists(self.state_file):
+            self.load_state(self.state_file)
+
+    def save_state(self, file_name):
+        state = {
+            "likelihoods_history": self.likelihoods_history,
+            "converged_history": self.converged_history,
+            "bottleneck_grad_history": self.bottleneck_grad_history,
+            "iter_trained": self.iter_trained,
+            "reward_model_ckpt": self.reward_model_ckpt
+        }
+        with open(file_name, 'w') as f:
+            yaml.dump(state, f)
+
+    def load_state(self, file_name):
+        with open(file_name, 'r') as f:
+            state = yaml.load(f, Loader=yaml.Loader)
+        self.set(**state)
+
+    def train(self, grid_world_list, reward_spec, n_iters, policy, vi_max_iters=10, reasoning_iters=5,
+              vi_eps=1e-6, gamma=0.95, checkpoint_freq=1e-10):
+        _iter = 0
+        reward_model = reward_spec.get_model()
+        try:
+            for _iter in range(n_iters):
+                _iter_start_time = time.time()
+                converged_status_list = []
+                loss = 0
+                reward_model.zero_grad()
+                for grid_world in grid_world_list:
+                    for goal, traj_list in grid_world.get_trajectories().read_by_goals(zip_sa=True):
+                        vi = grid_world.plan(goal,
+                                             policy=policy,
+                                             vi_max_iters=vi_max_iters,
+                                             reasoning_iters=reasoning_iters,
+                                             vi_eps=vi_eps,
+                                             gamma=gamma,
+                                             reward_key=reward_spec.get_key(),
+                                             verbose=self.verbose,
+                                             debug=self.debug)
+                        converged_status_list.append(vi.converged)
+                        loss -= utils.log_likelihood(vi.Pi, traj_list)
+
+                ll = np.exp(-loss.detach().item())
+                all_converged =  np.all(converged_status_list)
+                self.converged_history.append(all_converged)
+                self.likelihoods_history.append(ll)
+
+                print(">>> Iter: {:04d} ({:03.3f}s): VI converged {}, loss {:09.6f}, likelihood {:02.4f}".format(
+                    self.iter_trained, time.time() - _iter_start_time, all_converged, loss, ll), end="\n" if self.verbose else "\r")
+
+                if self.iter_trained % checkpoint_freq == 0 or self.iter_trained == n_iters - 1:
+                    reward_model.save(store_dir=self.store_dir, fname="mlirl_reward_state_iter_{}.pth".format(self.iter_trained))
+                    self.reward_model_ckpt = self.iter_trained
+                loss.backward()
+
+                bottleneck_grads = reward_model.bottleneck_grads()
+                self.bottleneck_grad_history.append(bottleneck_grads.numpy().copy())
+                # self.reward_history.append(reward_model.detach().numpy().squeeze())
+                reward_model.step()
+                self.iter_trained += 1
+                self.save_state(self.state_file)
+        except KeyboardInterrupt:
+            print("\nTraining interrupted @ iter {}".format(_iter))
+            reward_model.save(store_dir=self.store_dir, fname="mlirl_reward_state_iter_{}.pth".format(_iter))
+            self.reward_model_ckpt = self.iter_trained
+            self.save_state(self.state_file)
+        return
 
 
 def run_mlirl(tau_lst, S, PHI, T, R_model, gamma=0.95, mlirl_iters=100,

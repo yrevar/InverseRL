@@ -12,6 +12,7 @@ from sklearn.decomposition import PCA
 from .AbstractGridWorldDemonstration import AbstractGridWorldDemonstration
 from rl.model import ConvFCAutoEncoder, ConvAutoEncoder, RewardLinear
 
+
 def image_preprocess_fn(x):
     if len(x.shape) == 3:
         return torch.FloatTensor(x).unsqueeze(0).permute(0, 3, 1, 2)
@@ -19,7 +20,8 @@ def image_preprocess_fn(x):
         return torch.FloatTensor(x).permute(0, 3, 1, 2)
     return x
 
-class SatelliteGridWorldDemonstration(AbstractGridWorldDemonstration):
+
+class SensoryGridWorldDemonstration(AbstractGridWorldDemonstration):
 
     FEATURE_KEY_IMAGE = "feature_image"
 

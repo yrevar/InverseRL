@@ -133,9 +133,9 @@ def sample_image(X, y, y_q):
 def shuffle_in_sync(X, *vars, deep_copy=False):
     rand_idxs = np.random.choice(len(X), len(X), replace=False)
     if deep_copy:
-        return X[rand_idxs].copy(), (*[var[rand_idxs].copy() for var in vars])
+        return rand_idxs, X[rand_idxs].copy(), tuple(var[rand_idxs].copy() for var in vars)
     else:
-        return rand_idxs, X[rand_idxs], (*[var[rand_idxs] for var in vars])
+        return rand_idxs, X[rand_idxs], tuple(var[rand_idxs] for var in vars)
 
 
 def image_stack_to_sprite_image(image_stack, img_dim, nrow=None, padding=0):

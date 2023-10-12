@@ -562,6 +562,9 @@ class RewardLinear(Encoder):
     def get_optimizer_state_dict(self):
         return self.optimizer.state_dict()
 
+    def bottleneck_grads(self):
+        return self.fc_reward.weight.grad
+
 class LinearUnit(nn.Module):
     """
     Class for Linear Unit.

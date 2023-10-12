@@ -168,3 +168,4 @@ Werkzeug==1.0.0
 widgetsnbextension==3.5.1
 wrapt==1.12.1
 zipp==0.6.0
+navigation_mdp==1.0

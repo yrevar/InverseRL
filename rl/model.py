@@ -556,6 +556,12 @@ class RewardLinear(Encoder):
     def __call__(self, *args, **kwargs):
         return self.reward(*args, **kwargs)
 
+    def get_state_dict(self):
+        return self.state_dict()
+
+    def get_optimizer_state_dict(self):
+        return self.optimizer.state_dict()
+
 class LinearUnit(nn.Module):
     """
     Class for Linear Unit.

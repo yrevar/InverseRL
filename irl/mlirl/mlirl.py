@@ -56,7 +56,7 @@ class MLIRL(object):
         _iter = 0
         reward_model = reward_spec.get_model()
         try:
-            for _iter in range(n_iters):
+            for _iter in range(self.iter_trained, self.iter_trained + n_iters):
                 _iter_start_time = time.time()
                 converged_status_list = []
                 loss = 0

@@ -17,44 +17,44 @@ class StateActionArray(object):
         self.s_to_idx = {v: k for k, v in enumerate(S)}
         self.s_loc_to_idx = {v.get_location(): k for k, v in enumerate(S)}
         self.a_to_idx = {a: i for i, a in enumerate(A)}
-        self.Pi = torch.zeros(len(S), len(A), dtype=torch.float32)
+        self.SAValues = torch.zeros(len(S), len(A), dtype=torch.float32)
 
     def init_uniform(self):
-        self.Pi = torch.ones(len(self.S), len(self.A), dtype=torch.float32) / len(self.A)
+        self.SAValues = torch.ones(len(self.S), len(self.A), dtype=torch.float32) / len(self.A)
 
     def init_zeros(self):
-        self.Pi = torch.zeros(len(self.S), len(self.A), dtype=torch.float32)
+        self.SAValues = torch.zeros(len(self.S), len(self.A), dtype=torch.float32)
 
     def __getitem__(self, key):
         if isinstance(key[0], NvMDP.state.State) and isinstance(key[1], str):
-            return self.Pi[self.s_to_idx[key[0]], self.a_to_idx[key[1]]]
+            return self.SAValues[self.s_to_idx[key[0]], self.a_to_idx[key[1]]]
         elif isinstance(key[0], tuple) and isinstance(key[1], str):
-            return self.Pi[self.s_to_idx[self.S.at_loc(key[0])], self.a_to_idx[key[1]]]
+            return self.SAValues[self.s_to_idx[self.S.at_loc(key[0])], self.a_to_idx[key[1]]]
         elif isinstance(key[0], NvMDP.state.State) and isinstance(key[1], slice):
-            return self.Pi[self.s_to_idx[key[0]], key[1]]
+            return self.SAValues[self.s_to_idx[key[0]], key[1]]
         elif isinstance(key[0], tuple) and isinstance(key[1], slice):
-            return self.Pi[self.s_to_idx[self.S.at_loc(key[0])], key[1]]
+            return self.SAValues[self.s_to_idx[self.S.at_loc(key[0])], key[1]]
         elif (isinstance(key[0], int) or isinstance(key[0], slice)) and (isinstance(key[1], int) or isinstance(key[1], slice)):
-            return self.Pi[key[0], key[1]]
+            return self.SAValues[key[0], key[1]]
         else:
             raise ValueError("Invalid key!")
 
     def __setitem__(self, key, value):
         if isinstance(key[0], NvMDP.state.State) and isinstance(key[1], str):
-            self.Pi[self.s_to_idx[key[0]], self.a_to_idx[key[1]]] = value
+            self.SAValues[self.s_to_idx[key[0]], self.a_to_idx[key[1]]] = value
         elif isinstance(key[0], tuple) and isinstance(key[1], str):
-            self.Pi[self.s_to_idx[self.S.at_loc(key[0])], self.a_to_idx[key[1]]] = value
+            self.SAValues[self.s_to_idx[self.S.at_loc(key[0])], self.a_to_idx[key[1]]] = value
         elif isinstance(key[0], NvMDP.state.State) and isinstance(key[1], slice):
-            self.Pi[self.s_to_idx[key[0]], key[1]] = value
+            self.SAValues[self.s_to_idx[key[0]], key[1]] = value
         elif isinstance(key[0], tuple) and isinstance(key[1], slice):
-            self.Pi[self.s_to_idx[self.S.at_loc(key[0])], key[1]] = value
+            self.SAValues[self.s_to_idx[self.S.at_loc(key[0])], key[1]] = value
         elif isinstance(key[0], int) and (isinstance(key[1], int) or isinstance(key[1], slice)):
-            self.Pi[key[0], key[1]] = value
+            self.SAValues[key[0], key[1]] = value
         else:
             raise ValueError("Invalid key!")
 
     def data(self):
-        return self.Pi
+        return self.SAValues
 
     def __repr__(self):
         return str(self.data())

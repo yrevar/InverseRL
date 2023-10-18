@@ -83,20 +83,19 @@ def normalize(np_array):
 
 
 def compute_epoch(batch_idx, batch_size, data_size):
-    return int(np.floor(batch_idx * batch_size/ data_size))
+    return int(np.floor(batch_idx * batch_size / data_size))
 
 
 def get_lab_freq(labels, label_to_str=None, precision=4):
-
     l_cnts = dict(Counter(labels))
     s = sum(l_cnts.values())
     if s == 0:
         raise Exception("invalid input!")
     else:
         if label_to_str is not None:
-            return {label_to_str[k]: round(v/s, precision) for k, v in l_cnts.items()}
+            return {label_to_str[k]: round(v / s, precision) for k, v in l_cnts.items()}
         else:
-            return {k: round(v/s, precision) for k, v in l_cnts.items()}
+            return {k: round(v / s, precision) for k, v in l_cnts.items()}
 
 
 def calc_time_delta(func):
@@ -105,6 +104,7 @@ def calc_time_delta(func):
         func(*args, **kwargs)
         end = time.time()
         return end - begin
+
     return inner
 
 
@@ -115,7 +115,6 @@ def one_hot(i, n):
 
 
 def one_hot_nd(nd_int_array, N=None):
-
     if N is None:
         N = len(np.unique(nd_int_array))
 
@@ -150,10 +149,10 @@ def image_stack_to_sprite_image(image_stack, img_dim, nrow=None, padding=0):
     import torch
     from torchvision import utils
 
-    image_stack = np.reshape( image_stack.copy(), [ -1, H, W, C] )
+    image_stack = np.reshape(image_stack.copy(), [-1, H, W, C])
 
     if nrow is None:
-        nrow = int( np.ceil( np.sqrt( np.shape( image_stack )[ 0 ] ) ) )
+        nrow = int(np.ceil(np.sqrt(np.shape(image_stack)[0])))
 
     return utils.make_grid(
         torch.tensor(image_stack).permute(0, 3, 1, 2), nrow=nrow, padding=padding).permute(1, 2, 0)
@@ -251,9 +250,9 @@ def plot_3d_surface(img_2d, fig, elev=25, azim=-110, vmin=0, vmax=1, cmap=plt.cm
 
 def read_image(fname, resize_shape=None):
     if resize_shape is None:
-        return cv2.imread(fname)[:,:,::-1].copy()
+        return cv2.imread(fname)[:, :, ::-1].copy()
     else:
-        return cv2.resize(cv2.imread(fname)[:,:,::-1].copy(), resize_shape)
+        return cv2.resize(cv2.imread(fname)[:, :, ::-1].copy(), resize_shape)
 
 
 def user_input(message, choices=("y", "n")):
@@ -267,8 +266,8 @@ def user_input(message, choices=("y", "n")):
 def make_clean_dir(dirpath, confirm_deletion=True):
     if osp.exists(dirpath):
         if not confirm_deletion or \
-            "y" == user_input(
-                "This will delete {}. Are you sure?".format(osp.abspath(dirpath)), choices=("y", "n")):
+                "y" == user_input(
+            "This will delete {}. Are you sure?".format(osp.abspath(dirpath)), choices=("y", "n")):
             print("Cleaning...\n\t{}".format(osp.abspath(dirpath)))
             shutil.rmtree(dirpath)
         else:
@@ -295,3 +294,13 @@ def plot_discrete_array(data, rep_axes=[1, 1], cmap_nm="tab20", interpolation="n
     mat = plt.imshow(data, cmap=cmap, interpolation=interpolation,
                      vmin=np.min(data) - .5, vmax=np.max(data) + .5)
     cax = plt.colorbar(mat, ticks=np.arange(np.min(data), np.max(data) + 1))
+
+
+def cost_regularization_term(r_loc_fn, traj_list, ignore_last_action=True):
+    reg = 0
+    for traj in traj_list:
+        if ignore_last_action:
+            traj = traj[:-1]
+        for s, a in traj:
+            reg += r_loc_fn(s)
+    return reg

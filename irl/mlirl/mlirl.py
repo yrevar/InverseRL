@@ -52,7 +52,7 @@ class MLIRL(object):
         self.set(**state)
 
     def train(self, grid_world_list, reward_spec, n_iters, policy, vi_max_iters=10, reasoning_iters=5,
-              vi_eps=1e-6, gamma=0.95, checkpoint_freq=1e-10):
+              vi_eps=1e-6, gamma=0.95, checkpoint_freq=1e-10, cost_reg_lambda=0.0):
         _iter = 0
         reward_model = reward_spec.get_model()
         try:
@@ -73,7 +73,14 @@ class MLIRL(object):
                                              verbose=self.verbose,
                                              debug=self.debug)
                         converged_status_list.append(vi.converged)
-                        loss -= utils.log_likelihood(vi.Pi, traj_list)
+                        if cost_reg_lambda == 0.0:
+                            loss -= utils.log_likelihood(vi.Pi, traj_list)
+                        else:
+                            loss -= utils.log_likelihood(vi.Pi, traj_list) + cost_reg_lambda * utils.cost_regularization_term(
+                                r_loc_fn=lambda s: grid_world.VI[goal].R[
+                                    grid_world.VI[goal].s_to_idx[grid_world.S.at_loc(s)]],
+                                traj_list=traj_list
+                            )
 
                 ll = np.exp(-loss.detach().item())
                 all_converged =  np.all(converged_status_list)

@@ -296,11 +296,9 @@ def plot_discrete_array(data, rep_axes=[1, 1], cmap_nm="tab20", interpolation="n
     cax = plt.colorbar(mat, ticks=np.arange(np.min(data), np.max(data) + 1))
 
 
-def cost_regularization_term(r_loc_fn, traj_list, ignore_last_action=True):
+def cost_regularization_term(r_loc_fn, traj_list):
     reg = 0
     for traj in traj_list:
-        if ignore_last_action:
-            traj = traj[:-1]
         for s, a in traj:
             reg += r_loc_fn(s)
     return reg

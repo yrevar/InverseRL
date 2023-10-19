@@ -65,6 +65,8 @@ class ValueIteration:
     def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False, log_pi=False):
         if isinstance(rewards, torch.Tensor):
             self.R = rewards.detach()
+        elif isinstance(rewards, list) and isinstance(rewards[0], torch.Tensor):
+            self.R = [r.detach() for r in rewards]
         else:
             self.R = rewards
         self.R_grad = rewards
@@ -170,7 +172,7 @@ class ValueIteration:
 
     def run(self, max_iters, policy_fn, eps=1e-3, reasoning_iters=10, verbose=False, debug=False, ret_vals=False):
         assert 0 <= reasoning_iters <= max_iters
-        converged = False
+        v_delta_max = None
         if verbose: print("Learning values [ ", end="", flush=True)
         while self.iterno < max_iters - reasoning_iters:
             if verbose and (self.iterno % 30 == 0 or self.iterno == max_iters - reasoning_iters-1):

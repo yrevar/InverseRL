@@ -283,7 +283,11 @@ def log_likelihood(Pi, traj_list, eps=1e-15, ignore_last_action=True):
         if ignore_last_action:
             traj = traj[:-1]
         for s, a in traj:
-            loglik += torch.log(max(torch.tensor(eps), min(torch.tensor(1.) - eps, Pi[s, a])))
+            # loglik += torch.log(Pi[s, a])
+            # When probability of some step is 0, its log likelihood value is '-inf', which when differentiated leads
+            # to 'nan' value in gradients. To address this, we add smoothing term results in 0 gradient value.
+            # There's no learning here, but it helps in continuing training to learn from other steps.
+            loglik += torch.log(Pi[s, a] + torch.tensor(eps))
     return loglik
 
 
@@ -296,9 +300,11 @@ def plot_discrete_array(data, rep_axes=[1, 1], cmap_nm="tab20", interpolation="n
     cax = plt.colorbar(mat, ticks=np.arange(np.min(data), np.max(data) + 1))
 
 
-def cost_regularization_term(r_loc_fn, traj_list):
+def cost_regularization_term(r_loc_fn, traj_list, ignore_last_state=False):
     reg = 0
     for traj in traj_list:
         for s, a in traj:
+            if ignore_last_state:
+                traj = traj[:-1]
             reg += r_loc_fn(s)
     return reg

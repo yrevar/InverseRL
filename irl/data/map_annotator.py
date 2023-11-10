@@ -183,7 +183,7 @@ class MapAnnotator(object):
 
         H, W, _ = img.shape
         x_, y_ = position
-        w_max, h_max = np.float("-inf"), np.float("-inf")
+        w_max, h_max = float("-inf"), float("-inf")
         line_wh = {}
 
         for i, line in enumerate(msg.split('\n')):

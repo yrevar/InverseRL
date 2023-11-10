@@ -35,6 +35,13 @@ class MLIRL(object):
         if osp.exists(self.state_file):
             self.load_state(self.state_file)
 
+    def rewind(self, n):
+        assert n > 0
+        self.likelihoods_history = self.likelihoods_history[:-n]
+        self.converged_history = self.converged_history[:-n]
+        self.bottleneck_grad_history = self.bottleneck_grad_history[:-n]
+        self.iter_trained = max(self.iter_trained-n, 0)
+
     def save_state(self, file_name):
         state = {
             "likelihoods_history": self.likelihoods_history,
@@ -99,6 +106,73 @@ class MLIRL(object):
                 self.bottleneck_grad_history.append(bottleneck_grads.numpy().copy())
                 # self.reward_history.append(reward_model.detach().numpy().squeeze())
                 reward_model.step()
+                self.iter_trained += 1
+                self.save_state(self.state_file)
+        except KeyboardInterrupt:
+            print("\nTraining interrupted @ iter {}".format(_iter))
+            reward_model.save(store_dir=self.store_dir, fname="mlirl_reward_state_iter_{}.pth".format(_iter))
+            self.reward_model_ckpt = self.iter_trained
+            self.save_state(self.state_file)
+        return
+
+    def train_preheat_rewards(self, grid_world_list, reward_spec, n_iters, policy, vi_max_iters=10, reasoning_iters=5,
+              vi_eps=1e-6, gamma=0.95, checkpoint_freq=1e-10, cost_reg_lambda=0.0):
+        _iter = 0
+        reward_model = reward_spec.get_model()
+        try:
+            for _iter in range(self.iter_trained, self.iter_trained + n_iters):
+                _iter_start_time = time.time()
+                converged_status_list = []
+                total_loss = 0
+                # loss = 0
+                # reward_model.zero_grad()
+                for grid_world in grid_world_list:
+                    for goal, traj_list in grid_world.get_trajectories().read_by_goals(zip_sa=True):
+                        reward_model.zero_grad()
+                        vi = grid_world.plan(goal,
+                                             policy=policy,
+                                             vi_max_iters=vi_max_iters,
+                                             reasoning_iters=reasoning_iters,
+                                             vi_eps=vi_eps,
+                                             gamma=gamma,
+                                             reward_key=reward_spec.get_key(),
+                                             preheat_rewards=True if _iter < 1 else False,
+                                             verbose=self.verbose,
+                                             debug=self.debug)
+                        converged_status_list.append(vi.converged)
+                        if cost_reg_lambda == 0.0:
+                            loss = -utils.log_likelihood(vi.Pi, traj_list)
+                        else:
+                            loss = -utils.log_likelihood(vi.Pi, traj_list) + cost_reg_lambda * utils.cost_regularization_term(
+                                r_loc_fn=lambda s: grid_world.VI[goal].R[
+                                    grid_world.VI[goal].s_to_idx[grid_world.S.at_loc(s)]],
+                                traj_list=traj_list
+                            )
+                        total_loss += loss.detach().item()
+                        loss.backward()
+                        reward_model.step()
+
+                ll = np.exp(-total_loss)
+                all_converged = np.all(converged_status_list)
+                self.converged_history.append(all_converged)
+                self.likelihoods_history.append(ll)
+
+                print(">>> Iter: {:04d} ({:03.3f}s): VI converged {}, loss {:09.6f}, likelihood {:02.4f}".format(
+                    self.iter_trained, time.time() - _iter_start_time, all_converged, loss, ll), end="\n" if self.verbose else "\r")
+
+                if self.iter_trained % checkpoint_freq == 0 or self.iter_trained == n_iters - 1:
+                    reward_model.save(store_dir=self.store_dir, fname="mlirl_reward_state_iter_{}.pth".format(self.iter_trained))
+                    self.reward_model_ckpt = self.iter_trained
+                # loss.backward()
+
+                bottleneck_grads = reward_model.bottleneck_grads()
+                if bottleneck_grads is None:
+                    print("Bottleneck grads is None!")
+                else:
+                    self.bottleneck_grad_history.append(bottleneck_grads.numpy().copy())
+
+                # self.reward_history.append(reward_model.detach().numpy().squeeze())
+                # reward_model.step()
                 self.iter_trained += 1
                 self.save_state(self.state_file)
         except KeyboardInterrupt:

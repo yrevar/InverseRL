@@ -27,7 +27,7 @@ class GridWorldDemonstration(AbstractGridWorldDemonstration):
         # self.S.attach_feature_spec(
         #     nvmdp.features.FeatureClassImageSampler(
         #         lambda class_id: utils.sample_image(self.x_train, self.y_train, class_id), key=self.FEATURE_KEY_IMAGE))
-        self.T = nvmdp.dynamics.XYDynamics(self.S, slip_prob=0.0)
+        self.T = nvmdp.dynamics.VonNeumannDynamics(self.S, slip_prob=0.0)
         self.trajectory_store = TrajectoryStore.discrete_compact_4_actions(
             trajectories, None
         )
@@ -84,8 +84,48 @@ class GridWorldDemonstration(AbstractGridWorldDemonstration):
     def reshape_to_grid(self, values):
         return self.S._organize_to_grid(values)
 
+    # def plan(self, goal, policy, vi_max_iters, reasoning_iters, vi_eps=1e-6, gamma=0.95,
+    #          reward_key=None, verbose=False, debug=False):
+    #     self.R_curr = self.get_rewards(key=reward_key)
+    #     self.VI[goal] = Plan.ValueIteration(self.S, self.R_curr, self.T, verbose=verbose,
+    #                                         log_pi=False, gamma=gamma, goal=goal)
+    #     self.VI[goal].run(vi_max_iters, policy, reasoning_iters=reasoning_iters,
+    #                       verbose=verbose, debug=debug, eps=vi_eps, ret_vals=False)
+    #     return self.VI[goal]
+
+    def preheat_rewards(self, goal, reward_key, r_init=-0.1, r_goal_init=0., lr=1e-3, n_epochs=200):
+        import torch
+        loss_fn = torch.nn.MSELoss()
+        s_to_idx = {v: k for k, v in enumerate(self.S)}
+        r_expected = torch.tensor(np.ones(len(self.S)) * r_init, dtype=torch.float32)
+        r_expected[s_to_idx[self.S.at_loc(goal)]] = r_goal_init
+        r_model = self.S.get_reward_spec(key=reward_key).get_model()
+        old_lr = r_model.optimizer.param_groups[0]['lr']
+        # set new learning rate
+        for p in r_model.optimizer.param_groups:
+            p['lr'] = lr
+        print("Pre-heating rewards...")
+        for epoch in range(n_epochs):
+            r_model.zero_grad()
+            rewards = torch.stack(self.get_rewards(key=reward_key))
+            loss = loss_fn(rewards, r_expected)
+            print(loss.detach().numpy().round(5), end=", ")
+            loss.backward()
+            r_model.step()
+            if loss < 1e-4:
+                print("Good enough!")
+                break
+        r_model.zero_grad()
+        # reset old learning rate
+        for p in r_model.optimizer.param_groups:
+            p['lr'] = old_lr
+        print(lr, old_lr)
+        print("Ready to bake!")
+
     def plan(self, goal, policy, vi_max_iters, reasoning_iters, vi_eps=1e-6, gamma=0.95,
-             reward_key=None, verbose=False, debug=False):
+             reward_key=None, preheat_rewards=False, verbose=False, debug=False):
+        if preheat_rewards:
+            self.preheat_rewards(goal, reward_key)
         self.R_curr = self.get_rewards(key=reward_key)
         self.VI[goal] = Plan.ValueIteration(self.S, self.R_curr, self.T, verbose=verbose,
                                             log_pi=False, gamma=gamma, goal=goal)

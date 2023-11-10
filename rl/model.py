@@ -14,10 +14,12 @@ def read_input_1d(x):
         raise Exception("Can't handle input_shape {}!".format(x))
     return dim
 
+
 class PyTorchNNModuleAug(nn.Module):
     """
     Class augmenting nn.Module.
     """
+
     def __init__(self, input_shape, lr=0.1, weight_decay=0, debug=False):
         super().__init__()
         if isinstance(input_shape, int):
@@ -69,6 +71,7 @@ class Encoder(ABC, PyTorchNNModuleAug):
     """
     Abstract Class for Encoder.
     """
+
     def __init__(self, input_shape, lr=0.1, weight_decay=0, debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
         self.loss_history = np.array([])
@@ -127,6 +130,7 @@ class Decoder(ABC, PyTorchNNModuleAug):
     """
     Abstract Class for Decoder.
     """
+
     def __init__(self, input_shape, lr=0.1, weight_decay=0, debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
 
@@ -150,6 +154,7 @@ class AutoEncoder(Encoder, Decoder):
     """
     Abstract Class for AutoEncoder.
     """
+
     def __init__(self, input_shape, lr=0.1, weight_decay=0, store_dir="./data/ae_store_dir", debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
         self.store_dir = store_dir
@@ -173,9 +178,9 @@ class AutoEncoder(Encoder, Decoder):
             return x_
 
     def run_training(self, data_sampler, epochs=10,
-              loss_criterion=lambda x,x_: torch.sum((x-x_)**2/len(x)),
-              data_process_fn=lambda x: x,
-              plot_fn=None, gif_maker=None, x_val=None):
+                     loss_criterion=lambda x, x_: torch.sum((x - x_) ** 2 / len(x)),
+                     data_process_fn=lambda x: x,
+                     plot_fn=None, gif_maker=None, x_val=None):
         # data_sampler.reset_stats()
         epoch_max = self.epoch + epochs
         self.epoch = data_sampler.curr_epoch()
@@ -239,6 +244,7 @@ class ConvFCAutoEncoder(AutoEncoder):
     """
     Class for Convolutional AutoEncoder with FC layers.
     """
+
     def __init__(self, input_shape, z_dim=128, lr=0.1, weight_decay=0, dropout_prob=0.,
                  c1=8, cx1=4, fx1=4, store_dir=None, debug=False):
         super().__init__(input_shape, lr, weight_decay, store_dir, debug)
@@ -262,7 +268,7 @@ class ConvFCAutoEncoder(AutoEncoder):
         self.flatten = nn.Flatten()
         # is there any easier way?
         self.fc1_in_shape, self.fc1_in = self.encode(torch.rand(1, *self.input_shape), ret_fc_shape_only=True)
-        self.fc1 = nn.Linear(self.fc1_in, z_dim * fx1, bias=True) # should this be c1 * self.z_dim * k?
+        self.fc1 = nn.Linear(self.fc1_in, z_dim * fx1, bias=True)  # should this be c1 * self.z_dim * k?
         self.fc2 = nn.Linear(z_dim * fx1, z_dim, bias=True)
         self.dropout = nn.Dropout(self.dropout_p, inplace=False)
         self.sigmoid = nn.Sigmoid()
@@ -270,7 +276,6 @@ class ConvFCAutoEncoder(AutoEncoder):
         self.log_sigmoid = nn.LogSigmoid()
         self.reward_activation = self.sigmoid
         self.fc_reward = nn.Linear(z_dim, 1, bias=False)
-
 
     def setup_decoder_layers(self):
         cin, c1, cx1, fx1, z_dim = self.in_channels, self.c1, self.cx1, self.fx1, self.z_dim
@@ -297,7 +302,7 @@ class ConvFCAutoEncoder(AutoEncoder):
     def encode(self, x, debug=False, ret_pool_idxs=False, ret_fc_shape_only=False):
         debug = True if self.debug else debug
         pool_idxs = []
-        
+
         # prepare input
         # x = self.prepare_input(x)
         if debug: print("Encoding Input: ", x.shape)
@@ -398,6 +403,7 @@ class ConvAutoEncoder(AutoEncoder):
     """
     Class for Fully Convolutional AutoEncoder.
     """
+
     def __init__(self, input_shape, z_dim=7500, lr=0.1, weight_decay=0, dropout_prob=0., debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
         self.dropout_p = dropout_prob
@@ -505,6 +511,7 @@ class RewardLinear(Encoder):
     """
     Class for Linear Reward Model.
     """
+
     def __init__(self, input_shape, lr=0.1, weight_decay=0, debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
         self.reward_activation_type = "sigmoid"
@@ -519,6 +526,7 @@ class RewardLinear(Encoder):
     def setup_encoder_layers(self):
         input_dim = read_input_1d(self.in_shape())
         self.fc_reward = nn.Linear(input_dim, 1, bias=False)
+        self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
         self.reward_activation = self.sigmoid
 
@@ -565,10 +573,12 @@ class RewardLinear(Encoder):
     def bottleneck_grads(self):
         return self.fc_reward.weight.grad
 
+
 class LinearUnit(nn.Module):
     """
     Class for Linear Unit.
     """
+
     def __init__(self, input_dim, output_dim, bias=False, lr=0.1, weight_decay=0, debug=False):
         super(LinearUnit, self).__init__()
         assert isinstance(input_dim, int) and isinstance(output_dim, int)
@@ -634,10 +644,13 @@ class RewardMLP(Encoder):
     """
     Class for Linear Reward Model.
     """
+
     def __init__(self, input_shape, layer_dims, lr=0.1, weight_decay=0, debug=False):
         super().__init__(input_shape, lr, weight_decay, debug)
-        self.reward_activation_type = "relu"
-        self.hidden_activation_type = "relu"
+        self.hidden_activation = None
+        self.reward_activation = None
+        self.reward_activation_type = None
+        self.hidden_activation_type = None
         self.layer_dims = layer_dims
         self.layers = []
         self.initialize()
@@ -648,6 +661,7 @@ class RewardMLP(Encoder):
                 torch.nn.init.constant_(layer.weight.data, value)
                 layer.bias.data.fill_(0.)
         torch.nn.init.constant_(self.fc_reward.weight.data, value)
+        self.fc_reward.bias.data.fill_(0)
 
     def init_uniform(self, lo=-1, hi=1):
         for layer in self.layers:
@@ -655,6 +669,7 @@ class RewardMLP(Encoder):
                 torch.nn.init.uniform_(layer.weight.data, lo, hi)
                 layer.bias.data.fill_(0.)
         torch.nn.init.uniform_(self.fc_reward.weight.data, lo, hi)
+        self.fc_reward.bias.data.fill_(0)
 
     def setup_encoder_layers(self):
         self.sigmoid = nn.Sigmoid()
@@ -665,28 +680,33 @@ class RewardMLP(Encoder):
         in_features = read_input_1d(self.in_shape())
         for out_features in self.layer_dims:
             self.layers.append(nn.Linear(in_features, out_features, bias=True))
-            self.layers.append(self.hidden_activation)
+            if self.hidden_activation is not None:
+                self.layers.append(self.hidden_activation)
             in_features = out_features
         self.layers = torch.nn.ModuleList(self.layers)
         self.fc_reward = nn.Linear(in_features, 1, bias=True)
 
-    def set_hidden_activation(self, type="relu"):
-        assert type in ["relu", "sigmoid", "tanh"]
+    def set_hidden_activation(self, type=None):
+        assert type in ["relu", "sigmoid", "tanh", None]
+        self.hidden_activation_type = type
         if type == "relu":
             self.hidden_activation = self.relu
         elif type == "sigmoid":
             self.hidden_activation = self.sigmoid
-        else:
+        elif type == "tanh":
             self.hidden_activation = self.tanh
+        else:
+            self.hidden_activation = None
 
-    def set_reward_activation(self, type="relu"):
-        assert type in ["relu", "sigmoid", "tanh"]
+    def set_reward_activation(self, type=None):
+        assert type in ["relu", "sigmoid", None]
+        self.reward_activation_type = type
         if type == "relu":
             self.reward_activation = self.relu
         elif type == "sigmoid":
             self.reward_activation = self.sigmoid
         else:
-            self.reward_activation = self.tanh
+            self.reward_activation = None
 
     def get_state_dict(self):
         return self.state_dict()
@@ -710,10 +730,13 @@ class RewardMLP(Encoder):
     def reward(self, x, return_latent=False, debug=False):
         z = self.encode(x, debug=debug)
         r = self.fc_reward(z)
-        if self.reward_activation_type in ["relu", "sigmoid", "tanh"]:
+        if self.reward_activation_type == "sigmoid":
             r = -self.reward_activation(r)
-        else:
-            r = self.reward_activation(r)
+        elif self.reward_activation_type == "relu":
+            r = -self.reward_activation(r)
+        else:  # None
+            pass
+        # r -= 0.1
         if return_latent:
             return r, z
         else:

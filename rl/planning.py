@@ -11,19 +11,20 @@ import utils.PriorityQueue as PriorityQueue
 
 class StateActionArray(object):
 
-    def __init__(self, S, A):
+    def __init__(self, S, A, dtype=torch.float32):
         self.S = S
         self.A = A
         self.s_to_idx = {v: k for k, v in enumerate(S)}
         self.s_loc_to_idx = {v.get_location(): k for k, v in enumerate(S)}
         self.a_to_idx = {a: i for i, a in enumerate(A)}
-        self.SAValues = torch.zeros(len(S), len(A), dtype=torch.float32)
+        self.dtype = dtype
+        self.SAValues = torch.zeros(len(S), len(A), dtype=self.dtype)
 
     def init_uniform(self):
-        self.SAValues = torch.ones(len(self.S), len(self.A), dtype=torch.float32) / len(self.A)
+        self.SAValues = torch.ones(len(self.S), len(self.A), dtype=self.dtype) / len(self.A)
 
     def init_zeros(self):
-        self.SAValues = torch.zeros(len(self.S), len(self.A), dtype=torch.float32)
+        self.SAValues = torch.zeros(len(self.S), len(self.A), dtype=self.dtype)
 
     def __getitem__(self, key):
         if isinstance(key[0], NvMDP.state.State) and isinstance(key[1], str):
@@ -34,7 +35,8 @@ class StateActionArray(object):
             return self.SAValues[self.s_to_idx[key[0]], key[1]]
         elif isinstance(key[0], tuple) and isinstance(key[1], slice):
             return self.SAValues[self.s_to_idx[self.S.at_loc(key[0])], key[1]]
-        elif (isinstance(key[0], int) or isinstance(key[0], slice)) and (isinstance(key[1], int) or isinstance(key[1], slice)):
+        elif (isinstance(key[0], int) or isinstance(key[0], slice)) and (
+                isinstance(key[1], int) or isinstance(key[1], slice)):
             return self.SAValues[key[0], key[1]]
         else:
             raise ValueError("Invalid key!")
@@ -57,18 +59,21 @@ class StateActionArray(object):
         return self.SAValues
 
     def __repr__(self):
-        return str(self.data())
+        return str(f'{self.__class__}\ndata: {self.data()}')
 
 
 class ValueIteration:
 
-    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False, log_pi=False):
+    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False,
+                 log_pi=False, dtype=torch.float32):
         if isinstance(rewards, torch.Tensor):
             self.R = rewards.detach()
         elif isinstance(rewards, list) and isinstance(rewards[0], torch.Tensor):
             self.R = [r.detach() for r in rewards]
         else:
             self.R = rewards
+        # if not (isinstance(self.R[0], np.float32) or isinstance(self.R[0], np.float64)):
+        #     print(f"Warning: Reward type is {type(self.R[0])}!")
         self.R_grad = rewards
         self.T = dynamics
         self.S, self.nS = discrete_state_space, len(discrete_state_space)
@@ -79,6 +84,7 @@ class ValueIteration:
         # TODO: Ref: https://github.com/yrevar/InverseRL/blob/master/MLIRL/Differentiable_Value_Iteration_4_Actions.ipynb
         self.start_reasoning = False
         # self.log_pi = log_pi
+        self.dtype = dtype
         self.reset()
 
     def reset(self):
@@ -110,10 +116,10 @@ class ValueIteration:
     def initialize(self):
         self.s_to_idx = {v: k for k, v in enumerate(self.S)}
         self.a_to_idx = {a: i for i, a in enumerate(self.A)}
-        self.V = torch.tensor([r for r in self.R], requires_grad=False)
-        self.Q = StateActionArray(self.S, self.A)
+        self.V = torch.tensor([r for r in self.R], requires_grad=False, dtype=self.dtype)
+        self.Q = StateActionArray(self.S, self.A, dtype=self.dtype)
         self.Q.init_zeros()
-        self.Pi = StateActionArray(self.S, self.A)
+        self.Pi = StateActionArray(self.S, self.A, dtype=self.dtype)
         self.Pi.init_uniform()
         self.check_goal()
         if self.goal is not None:
@@ -131,11 +137,12 @@ class ValueIteration:
         q = 0
         for s_prime, p in self.T(s, a):
             if p > 0:
-                if debug: print(s, a, "- {} ->".format(p), s_prime)
+                # if debug: print(s, a, "- {} ->".format(p), s_prime)
                 if s_prime is None:  # outside envelope
                     continue
                 if debug and s_prime.is_terminal():
-                    print("\n {}, {} -> {}, R[s]={:.2f}, T(s,a,s')={:.2f},  gamma {:.2f}, V'[TERM]={:.2f}, E[V'[TERM]]={:.2f}".format(
+                    print("\n {}, {} -> {}, R[s]={:.2f}, T(s,a,s')={:.2f},  gamma {:.2f}, V'[TERM]={:.2f}, "
+                          "E[V'[TERM]]={:.2f}".format(
                         s, a, s_prime, self.R[si], p, self.gamma, self.V[self.s_to_idx[s_prime]],
                         self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()), end="")
                 q += self.gamma * p * self.V[self.s_to_idx[s_prime]].clone()
@@ -175,8 +182,9 @@ class ValueIteration:
         v_delta_max = None
         if verbose: print("Learning values [ ", end="", flush=True)
         while self.iterno < max_iters - reasoning_iters:
-            if verbose and (self.iterno % 30 == 0 or self.iterno == max_iters - reasoning_iters-1):
-                print(" {}".format(self.iterno), end="" if self.iterno == 0 or self.iterno % 300 else "\n\t", flush=True)
+            if verbose and (self.iterno % 30 == 0 or self.iterno == max_iters - reasoning_iters - 1):
+                print(" {}".format(self.iterno), end="" if self.iterno == 0 or self.iterno % 300 else "\n\t",
+                      flush=True)
             v_delta_max = self.step(policy_fn, debug=debug, ret_vals=False)
             if v_delta_max <= eps:
                 break
@@ -191,10 +199,14 @@ class ValueIteration:
         stopped_at = self.iterno
         self.start_reasoning = True
         k = 0
+        v_delta_max = None
         while self.iterno - stopped_at < reasoning_iters:
-            if verbose and ((self.iterno-stopped_at) % 30 == 0 or self.iterno - stopped_at == reasoning_iters-1):
-                print(" {}".format(self.iterno), end="" if self.iterno == stopped_at or self.iterno-stopped_at % 300 else "\n\t", flush=True)
-            _ = self.step(policy_fn, debug=debug, ret_vals=False)
+            if verbose and ((self.iterno - stopped_at) % 30 == 0 or self.iterno - stopped_at == reasoning_iters - 1):
+                print(" {}".format(self.iterno),
+                      end="" if self.iterno == stopped_at or self.iterno - stopped_at % 300 else "\n\t", flush=True)
+            v_delta_max = self.step(policy_fn, debug=debug, ret_vals=False)
+            if v_delta_max <= eps:
+                converged = True
             k += 1
 
         if verbose: print(" ] Done ({} iters).".format(reasoning_iters))
@@ -333,4 +345,3 @@ class ValueIteration:
 #     elif dx == 0 and dy < 0: return "down"
 #     elif dx > 0 and dy < 0: return "down-right"
 #     else: return "stay"
-

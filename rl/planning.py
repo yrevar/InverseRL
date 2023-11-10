@@ -64,7 +64,7 @@ class StateActionArray(object):
 
 class ValueIteration:
 
-    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, verbose=False,
+    def __init__(self, discrete_state_space, rewards, dynamics, gamma=0.95, goal=None, goal_init_value=0., verbose=False,
                  log_pi=False, dtype=torch.float32):
         if isinstance(rewards, torch.Tensor):
             self.R = rewards.detach()
@@ -80,6 +80,7 @@ class ValueIteration:
         self.A, self.nA = self.T.ACTIONS, len(self.T.ACTIONS)
         self.gamma = gamma
         self.goal = goal
+        self.goal_init_value = goal_init_value
         self.verbose = verbose
         # TODO: Ref: https://github.com/yrevar/InverseRL/blob/master/MLIRL/Differentiable_Value_Iteration_4_Actions.ipynb
         self.start_reasoning = False
@@ -123,7 +124,7 @@ class ValueIteration:
         self.Pi.init_uniform()
         self.check_goal()
         if self.goal is not None:
-            self.V[self.s_to_idx[self.goal]] = torch.tensor(0)
+            self.V[self.s_to_idx[self.goal]] = torch.tensor(self.goal_init_value)
         self.v_delta_max = None
         self.converged = False
         # if self.log_pi:
